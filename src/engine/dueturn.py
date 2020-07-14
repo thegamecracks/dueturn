@@ -1617,7 +1617,7 @@ class Fighter:
             AI=None,
             battleShellDict=None):
 
-        self.battle_env = battle_env 
+        self.battle_env = battle_env
 
         self.name = name
 
@@ -6313,22 +6313,7 @@ class BattleEnvironment:
 
     STATS_TO_SHOW = None
 
-    DATA = {
-        'randomize_moves': (6, 8),
-        # Union[bool, int, Tuple[int, int]] = (6, 8)
-        # If 1 or greater, or a tuple of endpoints for random size,
-        # pick a random set of moves for each fighter
-        # (noneMove is excluded from the count as it will always be added).
-        # Disable by removing this key.
-        # Examples:
-        #     False   # Do not randomize and use the entire move set
-        #     10      # Pick at most 10 usable moves from the move set
-        #     (4, 6)  # Pick at most 4-6 usable moves from the move set
-        'sort_moves': True,
-        # Sort the fighters' move set before
-        # starting the battle.
-        # Disable by removing this key.
-    }
+    DATA = {}
 
     SETTINGS_STANDARD = [
         'base_values_multiplier_percent',
@@ -6532,11 +6517,25 @@ else:
 
     def change_gamemode(self):
         """Change settings based on the environment's gamemode."""
+        def stop_randomization_of_moves(*, A=True, B=True):
+            if A and 'randomize_moves_A' in self.data:
+                del self.data['randomize_moves_A']
+            if B and 'randomize_moves_B' in self.data:
+                del self.data['randomize_moves_B']
+
+        def filter_moves_by_moveTypes(moves, moveTypes):
+            return [
+                m for m in moves
+                if 'moveTypes' in m
+                and Fighter.availableMoveCombination(
+                    m, 'moveTypes', moveTypes
+                )
+            ]
+
         if self.gamemode == '':
             return
         elif self.gamemode == 'all moves':
-            if 'randomize_moves' in self.data:
-                del self.data['randomize_moves']
+            stop_randomization_of_moves()
         elif self.gamemode == 'avatar':
             self.default_player_settings['mpRate'] = 5
 
@@ -6545,10 +6544,13 @@ else:
             ]
 
             self.default_player_settings['moveTypes'] = [MTBender]
+
             del self.default_player_settings['inventory']
+
             # Pick random elements for fighters
             playerA_bending = random.choice(elements)
             playerB_bending = random.choice(elements)
+
             # Pick random skill levels for fighters
             playerA_bending = playerA_bending(random.randint(1, 3))
             playerB_bending = playerB_bending(random.randint(1, 3))
@@ -6558,25 +6560,19 @@ else:
             self.default_player_settings_A['name'] = 'Kirby'
             self.default_player_settings_A['moveTypes'] = [MTKirby]
 
-            if 'randomize_moves' in self.data:
-                del self.data['randomize_moves']
+            stop_randomization_of_moves()
         elif self.gamemode == 'footsies':
             # Change stats
             self.default_player_settings['st'] = 0
             self.default_player_settings['stRate'] = 0
             self.default_player_settings['mpMax'] = 0
-            self.default_player_settings['moveTypes'] = [MTFootsies]
+            moveTypes = [MTFootsies]
+            self.default_player_settings['moveTypes'] = moveTypes
+            self.default_player_settings['moves'] = filter_moves_by_move_type(
+                self.default_player_settings['moves'], moveTypes
+            )
 
-            if 'randomize_moves' in self.data:
-                del self.data['randomize_moves']
-
-            self.default_player_settings['moves'] = [
-                move for move in moveList
-                if 'moveTypes' in move
-                and Fighter.availableMoveCombination(
-                    move, 'moveTypes', (MTFootsies,)
-                )
-            ]
+            stop_randomization_of_moves()
 
             # Hide mana stat
             self.stats_to_show = ('hp', 'st')
@@ -7203,19 +7199,23 @@ else:
                 containing at least two names.
 
         """
-        if firstName:
-            firstPlayer['name'] = firstName
-        if secondName:
-            secondPlayer['name'] = secondName
-
-        if not firstName or not secondName:
-            if not isinstance(nameSet, set):
-                raise TypeError('Expected a set of names to choose '
-                                'for the fighters')
+        def set_random_player_names(names):
             fighterAINames = random.sample(
-                self.random_player_names - {firstName, secondName}, 2)
+                names.copy() - {firstName, secondName}, 2)
             firstPlayer.setdefault('name', fighterAINames[0])
             secondPlayer.setdefault('name', fighterAINames[1])
+
+        if firstName is not None:
+            firstPlayer['name'] = firstName
+        if secondName is not None:
+            secondPlayer['name'] = secondName
+
+        if firstName is None or secondName is None:
+            try:
+                set_random_player_names(nameSet)
+            except Exception:
+                # Use self.random_player_names as fallback
+                set_random_player_names(self.random_player_names)
 
 
     def player_create_fighters(
@@ -7261,6 +7261,24 @@ def collect_and_log_garbage(log_handler=None):
 
 
 def main():
+    data = {
+        'randomize_moves_A': (6, 8),
+        'randomize_moves_B': (6, 8),
+        # Union[bool, int, Tuple[int, int]] = (6, 8)
+        # If 1 or greater, or a tuple of endpoints for random size,
+        # pick a random set of moves for each fighter
+        # (noneMove is excluded from the count as it will always be added).
+        # Examples:
+        #     10      # Pick at most 10 usable moves from the move set
+        #     (4, 6)  # Pick at most 4-6 usable moves from the move set
+        # Disable by removing this key. Setting the key's value to False
+        # also works but is not recommended.
+        'sort_moves': True,
+        # Sort the fighters' move set before
+        # starting the battle.
+        # Disable by removing this key.
+    }
+
     try:
         startup_procedures()
 
@@ -7268,7 +7286,8 @@ def main():
 
         while True:
             with BattleEnvironment(
-                        random_player_names=playernamelist
+                        random_player_names=playernamelist,
+                        data=data
                     ) as battle:
                 # User Setup
                 firstPlayer, secondPlayer, autoplay = \
@@ -7277,15 +7296,6 @@ def main():
                 # Generate Settings
                 firstPlayerSettings, secondPlayerSettings = \
                     battle.player_create_default_settings()
-
-                randomize_moves = battle.data.get('randomize_moves')
-
-                # Set up randomized moves if enabled
-                if randomize_moves is not None:
-                    if firstPlayerSettings['moves'] is None:
-                        firstPlayerSettings['moves'] = [None]
-                    if secondPlayerSettings['moves'] is None:
-                        secondPlayerSettings['moves'] = [None]
 
                 # Add player names
                 battle.player_update_names(
@@ -7299,29 +7309,38 @@ def main():
                 )
 
                 # Post-fighter creation settings
-                if randomize_moves is not None:
-                    def sample_moves(fighter, amount=randomize_moves):
-                        if isinstance(amount, tuple):
-                            # Range given; pick a random amount
-                            # between the range
-                            amount = random.randint(*amount)
+                def sample_moves(fighter, amount):
+                    """Randomize a fighter's moves by removing some from their
+                    move set."""
+                    if isinstance(amount, tuple):
+                        # Range given; pick a random amount
+                        # between the range
+                        amount = random.randint(*amount)
 
-                        moves = [moveList[0]]  # Always have noneMove
+                    moves = [noneMove]  # Always have noneMove
 
-                        # Filter out only moves that the fighter can use
-                        moveListFilter = [m for m in moveList[1:]
-                                        if fighter.availableMove(m)]
+                    # Filter out only moves that the fighter can use
+                    moveListFilter = [
+                        m for m in moveList
+                        if fighter.availableMove(m)
+                        and m['name'] != 'None'
+                    ]
 
-                        # Sample some of the moves
-                        moves += random.sample(
-                            moveListFilter,
-                            min(len(moveListFilter), amount))
+                    # Sample some of the moves
+                    moves += random.sample(
+                        moveListFilter,
+                        min(len(moveListFilter), amount))
 
-                        # Finalize the moves onto the fighter
-                        fighter.moves = moves
+                    # Finalize the moves onto the fighter
+                    fighter.moves = moves
 
-                    sample_moves(firstPlayer)
-                    sample_moves(secondPlayer)
+                # Randomization of moves
+                randomize_moves_A = battle.data.get('randomize_moves_A')
+                randomize_moves_B = battle.data.get('randomize_moves_B')
+                if randomize_moves_A:
+                    sample_moves(firstPlayer, randomize_moves_A)
+                if randomize_moves_B:
+                    sample_moves(secondPlayer, randomize_moves_B)
 
                 # If enabled, sort moves from each fighter by name
                 if 'sort_moves' in battle.data:
