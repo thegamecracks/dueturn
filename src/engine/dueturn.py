@@ -18,15 +18,13 @@ of the move() code.
 
 
 # Unconditional imports (should always be available)
-import cmd          # Player's User Interface
+import cmd          # Player Interface
 import collections  # Useful classes
 import gc           # End-of-game garbage collection
 import itertools    # Useful iteration functions
 import platform     # OS identification
 import pprint       # Pretty-format objects for logging
 import random       # Random Number Generator
-import sys          # Startup detection, Capturing error tracebacks
-import traceback    # Parsing tracebacks
 import time         # Time and pausing
 from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, \
      Literal, Mapping, Optional, Sequence, Set, Tuple, Union
@@ -56,8 +54,10 @@ from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, \
 # Union: Use when something could be one of a few types
 #     int_or_str: Union[int, str]
 
+from .util import *
 from src.ai import goapy
 from src import logs  # Creating logs
+from src import settings
 from src.textio import (  # Color I/O
     ColoramaCodes, cr, format_color, input_color, print_color
 )
@@ -66,52 +66,23 @@ from src.textio import (  # Color I/O
 # Specify types
 RealNum = Union[int, float]
 
-# Game Settings 1/1
+# Game Settings
 playernamelist = {'abc', 'def', 'ghi', 'ned', 'led', 'med', 'red',
                   'ked', 'sed', 'ped', 'ben'}
 # Name list for auto-selecting names
 
-GAME_INPUT_MOVE_EXACT_SEARCH: bool = False              # False
-# Disable auto-completing move names.
+# Load settings
+cfg_engine = settings.load_config('engine')
+cfg_interface = settings.load_config('interface')
 
-GAME_AI_ANALYSE_MOVE_RANDOM_TIMES: int = 10             # 10
-# The amount of times FighterAIGeneric will randomly sample a move from its
-# user's moveset before picking the lowest costing move.
+INDENT = '\t' if cfg_engine.GAME_DISPLAY_USE_TABS \
+    else ' ' * cfg_engine.GAME_DISPLAY_TAB_LENGTH
+# The standard indentation to use for printing based on game settings.
 
-GAME_AUTOPLAY_NORMAL_DELAY: RealNum = 1      # 1
-# RealNum: How long to wait when AI is automatically moving
-GAME_AUTOPLAY_AI_DELAY: RealNum = 2                     ## 1.5
-# How long to pause when two AIs are fighting each other.
-
-GAME_DISPLAY_AUTOCOMPLETE_KEY: str = 'tab'              # 'tab'
-# The key to press for auto-completing commands.
-GAME_DISPLAY_PRINT_MOVES: bool = False                  # False
-# Automatically display moves for the player that is moving.
-GAME_DISPLAY_SHOW_STAT_DIFFERENCE: bool = True          # True
-# Show difference in stats from previous move
-#     instead of just stat regeneration.
-GAME_DISPLAY_SPEED: RealNum = 1               # 1
-# The speed multiplier for pauses.
-GAME_DISPLAY_STAT_GAP: int = 9                          ## 4
-# The least amount of characters the fighters should be spaced apart.
-GAME_DISPLAY_STATS_COLOR_MODE: Literal[0, 1, 2] = 1     # 1
-# The color mode when displaying stats.
-# 0 = No colours on stats
-# 1 = Colour the stat number
-# 2 = Colour the line
-GAME_DISPLAY_STATS_SHIFT: int = 8                       ## 4
-# The amount of leading spaces when displaying the battle.
-GAME_DISPLAY_TAB_LENGTH: int = 4                        # 8 console, 4 Discord
-# Length of tabs for when replacing spaces.
-GAME_DISPLAY_USE_TABS: bool = False                      # False
-# Replace spaces with tabs when printing.
-INDENT: str = '\t' if GAME_DISPLAY_USE_TABS \
-    else ' ' * GAME_DISPLAY_TAB_LENGTH
-# The standard indentation to use for printing.
-
-GAME_SETUP_INPUT_COLOR = '{FLcyan}'
-# The color to use when prompting at the start of a game.
-
+# Convert text color placeholders in config into color codes
+cfg_engine.GAME_SETUP_INPUT_COLOR = format_color(
+    cfg_engine.GAME_SETUP_INPUT_COLOR
+)
 
 # Set up logger
 logger = logs.get_logger()
@@ -133,97 +104,6 @@ except ModuleNotFoundError:
                     'install "pyreadline" module to resolve')
     else:
         logger.info('Missing readline module, auto-completion not available')
-
-
-# Define main functions
-def exception_message(
-        exc_type=None, exc_value=None, exc_traceback=None,
-        header: str = '', log_handler=None) -> str:
-    """Create a message out of the last exception handled by try/except.
-
-    Args:
-        header (Optional[str]): The header to place above the message.
-        log_handler (Optional): The logger to run the exception() method on.
-
-    Returns:
-        str: The string containing the exception message.
-
-    """
-    if exc_type is None and exc_value is None and exc_traceback is None:
-        exc_type, exc_value, exc_traceback = sys.exc_info()
-    elif exc_type is None or exc_value is None or exc_traceback is None:
-        raise ValueError('An exception type/value/traceback was passed '
-                         'but is missing the other values')
-
-    # Header message with padded border
-    msg = ''
-    if header:
-        msg = '{:=^{length}}\n'.format(
-            header, length=len(header) * 2 + len(header) % 2)
-
-    if log_handler is not None:
-        # Log the exception; doesn't require creating a message
-        logger.exception(msg)
-
-    # Create the message to return, containing the traceback and exception
-    for frame in traceback.extract_tb(exc_traceback):
-        msg += f'Frame {frame.name!r}\n'
-        # Show only the file name instead of the full location
-        filename = frame.filename[::-1]
-        filename = filename[:filename.find('\\') + 1] + '..'
-        filename = filename[::-1]
-
-        msg += f'Within file "{filename}"\n'
-        msg += f'at line number {frame.lineno}:\n'
-        msg += f'   {frame.line}\n'
-    msg += f'\n{exc_type.__name__}: {exc_value}'
-
-    return msg
-
-
-def plural(n, pluralString='s', naturalOnly=False):
-    """Return a plural suffix if a number should be read as plural.
-
-    Args:
-        n (RealNum): The number to check.
-        pluralString (str): The plural suffix to return
-            if `n` should be a pluralized quantity.
-        naturalOnly (bool): If True, return plural if n != 1.
-            Otherwise, return plural if abs(n) != 1.
-
-    Returns:
-        str
-
-    """
-    if naturalOnly and n == 1:
-        return ''
-    elif abs(n) == 1:
-        return ''
-    return pluralString
-
-
-def pause(sleep=None, printNewline=0):
-    """When not given a number, will block current thread with input().
-    Otherwise, will use time.sleep() for the specified time.
-
-    Args:
-        sleep (Optional[RealNum]): The time to sleep for.
-            If None, will call input().
-        printNewline (Literal[0, 1, 2]):
-            When using time.sleep (sleep is not None),
-            if 1, then a newline is printed before calling time.sleep(sleep);
-            if 2, then it is printed after the call.
-            For no newline, set to 0.
-
-    """
-    if sleep is None:
-        input()
-    else:
-        if printNewline == 1:
-            print()
-        time.sleep(sleep)
-        if printNewline == 2:
-            print()
 
 
 class InputAdvanced:
@@ -276,7 +156,7 @@ class PromptBoolean:
             message = str(message)
             true = tuple(true)
             if not isinstance(false, (type(None), tuple)):
-                raise TypeError('false must be None or a tuple')
+                raise TypeError('`false` must be None or a tuple')
             showoptioncount = int(showoptioncount)
         except TypeError as e:
             raise TypeError('Invalid argument type given') from e
@@ -312,43 +192,6 @@ class PromptBoolean:
                     return False
 
 
-def divi_zero(n, m, raiseIfZero=False, failValue=0, mode=0):
-    """Division function with tweakable settings.
-
-    Args:
-        n (Real): Dividend
-        m (Real): Divisor
-        raiseIfZero (bool):
-            If True, return failValue if the denominator is 0.
-        failValue (Real):
-            Value to return if n == 0 or m == 0 and not raiseIfZero.
-        mode (Literal[-1, 0, 1]):
-            0 for normal division
-            -1 for floor division
-            1 for ceil division
-
-    """
-    if n == 0:
-        return failValue
-    if m == 0:
-        if raiseIfZero:
-            raise ZeroDivisionError(f'{n!r} / {m!r}')
-        return failValue
-
-    if mode == 0:
-        return n / m
-    elif mode == -1:
-        return n // m
-    elif mode == 1:
-        return (n + m - 1) // m
-    else:
-        raise ValueError(f'Invalid mode parameter ({mode})')
-
-
-# def mean(iterable):
-#     return sum(args) / len(args)
-
-
 def num(x) -> Union[int, float, complex]:
     """Convert an object into either a int, float, or complex in that order."""
     try:
@@ -363,12 +206,6 @@ def num(x) -> Union[int, float, complex]:
             if n.imag == 0:
                 return num(n.real)
             return complex(num(n.real), num(n.imag))
-
-
-def list_copy(items: Iterable) -> List:
-    """Run the 'copy' method on each item if available and return a list."""
-    return [item.copy() if hasattr(item, 'copy') else item
-            for item in items]
 
 
 # class Singleton(type):
@@ -1121,12 +958,6 @@ class StatusEffect:
         return self.__class__(values)
 
 
-# Game Settings Handler 1/1
-# Convert text color placeholders into color codes
-GAME_SETUP_INPUT_COLOR = format_color(GAME_SETUP_INPUT_COLOR)
-
-
-# Initialize Fighter Interactive Shells
 class FighterBattleShell:
     """To be inherited by other battle shells along with cmd.Cmd."""
     intro = ''  # Message when shell is opened
@@ -1286,7 +1117,7 @@ Usage: move [future commands]"""
 
         move_shell = FighterBattleMoveShell(
             self.fighter, self.opponent, namespace, [arg],
-            completekey=GAME_DISPLAY_AUTOCOMPLETE_KEY)
+            completekey=cfg_interface.AUTOCOMPLETE_KEY)
         move_shell.cmdloop()
         self.namespaceUpdateCmdQueue(namespace)
 
@@ -1318,7 +1149,7 @@ Usage: item [future commands]"""
 Usage: stats [future commands]"""
         print_color(
             BattleEnvironment.fightChartOne(
-                self.fighter, color=GAME_DISPLAY_STATS_COLOR_MODE
+                self.fighter, color=cfg_engine.GAME_DISPLAY_STATS_COLOR_MODE
             )[0]
         )
         print()
@@ -1330,8 +1161,8 @@ Usage: stats [future commands]"""
 Usage: display [future commands]"""
         print_color(BattleEnvironment.fightChartTwo(
             self.fighter, self.opponent,
-            topMessage='<--', tabs=GAME_DISPLAY_USE_TABS,
-            color_mode=GAME_DISPLAY_STATS_COLOR_MODE)
+            topMessage='<--', tabs=cfg_engine.GAME_DISPLAY_USE_TABS,
+            color_mode=cfg_engine.GAME_DISPLAY_STATS_COLOR_MODE)
         )
         print()
 
@@ -1406,7 +1237,7 @@ class FighterBattleMoveShell(
             {'name': inputMove},
             ignoreSkills=True,
             ignoreItems=True,
-            exactSearch=GAME_INPUT_MOVE_EXACT_SEARCH,
+            exactSearch=cfg_interface.MOVES_REQUIRE_EXACT_SEARCH,
             detailedFail=True,
             showUnsatisfactories=True)
 
@@ -1525,7 +1356,7 @@ class FighterBattleMoveInfoShell(
             ignoreMoveTypes=True,
             ignoreSkills=True,
             ignoreItems=True,
-            exactSearch=GAME_INPUT_MOVE_EXACT_SEARCH,
+            exactSearch=cfg_interface.MOVES_REQUIRE_EXACT_SEARCH,
             detailedFail=True)
 
         # If search worked, print info about the move
@@ -2219,10 +2050,14 @@ Expected combination of type list, given object of type {type(combination)}')
         if cmdqueue is None:
             cmdqueue = [self.battleShellDict['moveCMD']]
         namespace = dict()
+
         FighterBattleMainShell(
             self, target, namespace, cmdqueue,
-            completekey=GAME_DISPLAY_AUTOCOMPLETE_KEY).cmdloop()
+            completekey=cfg_interface.AUTOCOMPLETE_KEY
+        ).cmdloop()
+
         self.battleShellDict['moveCMD'] = namespace['newMoveCMD']
+
         return namespace['shell_result']
 
 
@@ -3569,7 +3404,7 @@ user maximum {stat} is {eval(f'user.{stat}Max')}, and minimum move cost \
         if len(moves) == 0:
             # No moves to use
             return self.returnNoneMove(user)
-        for _ in range(GAME_AI_ANALYSE_MOVE_RANDOM_TIMES):
+        for _ in range(10):
             # If no moves left from popping, trigger for-else statement
             if (len_moves_forloop := len(moves)) == 0:
                 continue
@@ -3965,7 +3800,7 @@ class FighterAIMimic(FighterAIGeneric):
         if len(moves) == 0:
             # No moves to use
             return self.returnNoneMove(user)
-        for _ in range(GAME_AI_ANALYSE_MOVE_RANDOM_TIMES):
+        for _ in range(10):
             # If no moves left from popping, trigger for-else statement
             if (len_moves_forloop := len(moves)) == 0:
                 continue
@@ -6483,13 +6318,14 @@ else:
 
         gamemode = input_color(
             'Type a gamemode (case-insensitive) to play it,\n'
-            f'or nothing to skip. {GAME_SETUP_INPUT_COLOR}').casefold()
+            f'or nothing to skip. {cfg_engine.GAME_SETUP_INPUT_COLOR}'
+        ).casefold()
 
         if gamemode not in gamemodes:
             while gamemode not in gamemodes:
                 gamemode = input_color(
                     'Unknown gamemode; check spelling: '
-                    f'{GAME_SETUP_INPUT_COLOR}').casefold()
+                    f'{cfg_engine.GAME_SETUP_INPUT_COLOR}').casefold()
 
         logger.debug(f'Got gamemode from user: {gamemode!r}')
         self.gamemode = gamemode
@@ -6502,13 +6338,14 @@ else:
 
         AI = input_color(
             'Type an AI (case-insensitive) to change it,\n'
-            f'or nothing to skip. {GAME_SETUP_INPUT_COLOR}').casefold()
+            f'or nothing to skip. {cfg_engine.GAME_SETUP_INPUT_COLOR}'
+        ).casefold()
 
         if AI not in AIs:
             while AI not in AIs:
                 AI = input_color(
                     'Unknown AI; check spelling: '
-                    f'{GAME_SETUP_INPUT_COLOR}').casefold()
+                    f'{cfg_engine.GAME_SETUP_INPUT_COLOR}').casefold()
 
         logger.debug(f'Got AI from user: {AI!r}')
         self.AI = AI
@@ -6714,21 +6551,21 @@ else:
         def fight_chart(
                 *, topMessage, color_mode=None):
             if color_mode is None:
-                color_mode = GAME_DISPLAY_STATS_COLOR_MODE
+                color_mode = cfg_engine.GAME_DISPLAY_STATS_COLOR_MODE
             return self.fightChartTwo(
                 a, b, statLogA, statLogB,
                 statsToShow=self.stats_to_show,
-                topMessage=topMessage, tabs=GAME_DISPLAY_USE_TABS,
+                topMessage=topMessage, tabs=cfg_engine.GAME_DISPLAY_USE_TABS,
                 color_mode=color_mode)
 
         def autoplay_pause():
             if autoplay:
                 if a.isPlayer or b.isPlayer:
                     # If there is one/two players, pause AUTOPLAY seconds
-                    pause(GAME_AUTOPLAY_NORMAL_DELAY / GAME_DISPLAY_SPEED)
+                    pause(cfg_engine.GAME_AUTOPLAY_NORMAL_DELAY / cfg_engine.GAME_DISPLAY_SPEED)
                 else:
                     # If two AIs are fighting, pause FIGHT_AI seconds
-                    pause(GAME_AUTOPLAY_AI_DELAY / GAME_DISPLAY_SPEED)
+                    pause(cfg_engine.GAME_AUTOPLAY_AI_DELAY / cfg_engine.GAME_DISPLAY_SPEED)
                 print()
             else:
                 input()
@@ -6739,12 +6576,12 @@ else:
                     return True
             return False
 
-        def status_effects_print_delay():
+        def get_status_effects_print_delay():
             if autoplay:
                 if a.isPlayer or b.isPlayer:
-                    return GAME_AUTOPLAY_NORMAL_DELAY / GAME_DISPLAY_SPEED
+                    return cfg_engine.GAME_AUTOPLAY_NORMAL_DELAY / cfg_engine.GAME_DISPLAY_SPEED
                 else:
-                    return GAME_AUTOPLAY_AI_DELAY / GAME_DISPLAY_SPEED
+                    return cfg_engine.GAME_AUTOPLAY_AI_DELAY / cfg_engine.GAME_DISPLAY_SPEED
             return None
 
         logger.info(
@@ -6762,7 +6599,7 @@ else:
             if effects_messages_values:
                 autoplay_pause()
                 a.printStatusEffectsMessages(effects_messages_values,
-                                             status_effects_print_delay())
+                                             get_status_effects_print_delay())
                 if autoplay:
                     print()
             elif turns > 1:
@@ -6778,22 +6615,22 @@ else:
             autoplay_pause()
             if effects_messages_durations:
                 a.printStatusEffectsMessages(effects_messages_durations,
-                                             status_effects_print_delay())
+                                             get_status_effects_print_delay())
 
-            if GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
+            if cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 # Show damage difference
                 statLogA = self.battle_stats_log(a)
                 statLogB = self.battle_stats_log(b)
 
             # Print user moves if enabled
-            if GAME_DISPLAY_PRINT_MOVES:
+            if cfg_engine.GAME_DISPLAY_PRINT_MOVES:
                 print_color(a.formatMoves())
             a.move(b)
 
             if a.hp <= 0 or b.hp <= 0:
                 break
 
-            if not GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
+            if not cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 # Show regeneration
                 statLogA = self.battle_stats_log(a)
             a.updateStats()
@@ -6804,7 +6641,7 @@ else:
             autoplay_pause()
             if effects_messages_values:
                 b.printStatusEffectsMessages(effects_messages_values,
-                                             status_effects_print_delay())
+                                             get_status_effects_print_delay())
                 if autoplay:
                     print()
 
@@ -6816,13 +6653,13 @@ else:
             autoplay_pause()
             if effects_messages_durations:
                 b.printStatusEffectsMessages(effects_messages_durations,
-                                             status_effects_print_delay())
+                                             get_status_effects_print_delay())
 
-            if GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
+            if cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 statLogA = self.battle_stats_log(a)
                 statLogB = self.battle_stats_log(b)
 
-            if GAME_DISPLAY_PRINT_MOVES:
+            if cfg_engine.GAME_DISPLAY_PRINT_MOVES:
                 print_color(b.formatMoves())
 
             b.move(a)
@@ -6830,7 +6667,7 @@ else:
             if a.hp <= 0 or b.hp <= 0:
                 break
 
-            if not GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
+            if not cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 statLogB = self.battle_stats_log(b)
             b.updateStats()
 
@@ -6891,13 +6728,14 @@ else:
 
     @staticmethod
     def print_end_message(end_message):
-        time.sleep(0.75 / GAME_DISPLAY_SPEED)
+        speed = cfg_engine.GAME_DISPLAY_SPEED
+        time.sleep(0.75 / speed)
         print_color(end_message[0])
-        time.sleep(0.5 / GAME_DISPLAY_SPEED)
+        time.sleep(0.5 / speed)
         print_color(end_message[1])
-        time.sleep(0.25 / GAME_DISPLAY_SPEED)
+        time.sleep(0.25 / speed)
         print_color(end_message[2])
-        time.sleep(0.8 / GAME_DISPLAY_SPEED)
+        time.sleep(0.8 / speed)
         print_color(end_message[3])
 
 
@@ -7021,7 +6859,7 @@ else:
 
         # If there is a top message, print it center-aligned
         if topMessage is not None:
-            topMessageLength = lengthA * 2 + GAME_DISPLAY_STAT_GAP
+            topMessageLength = lengthA * 2 + cfg_engine.GAME_DISPLAY_STAT_GAP
             message_list.append(f'{topMessage:^{topMessageLength}}'.rstrip())
 
         # For each line in both states
@@ -7034,11 +6872,11 @@ else:
             if msg_align:
                 # Skip first line, leadingA-center-aligning is for the stats
                 msgA = f'{a_line_nocode:{msg_align}{lengthA}}' \
-                       f"{' ' * GAME_DISPLAY_STAT_GAP}"
+                       f"{' ' * cfg_engine.GAME_DISPLAY_STAT_GAP}"
             else:
                 msgA = f'{leadingA}' \
                        f'{a_line_nocode:{lengthA_with_lead}}' \
-                       f"{' ' * GAME_DISPLAY_STAT_GAP}"
+                       f"{' ' * cfg_engine.GAME_DISPLAY_STAT_GAP}"
             # Replace the line_nocode with the actual ANSI-coded string
             msgA = msgA.replace(a_line_nocode, a_line, 1)
 
@@ -7054,11 +6892,11 @@ else:
         # Add indent to all lines and strip trailing whitespace
         message = []
         for line in message_list:
-            message.append(' ' * GAME_DISPLAY_STATS_SHIFT + line.rstrip())
+            message.append(' ' * cfg_engine.GAME_DISPLAY_STATS_SHIFT + line.rstrip())
         message = '\n'.join(message)
 
         if tabs:
-            message = message.replace(' ' * GAME_DISPLAY_TAB_LENGTH, '\t')
+            message = message.replace(' ' * cfg_engine.GAME_DISPLAY_TAB_LENGTH, '\t')
 
         return message
 
@@ -7362,7 +7200,8 @@ def main():
             input()
             print()
     except Exception:
-        msg = exception_message(header='RUNTIME ERROR', log_handler=logger)
+        msg = exception_message(
+            header='RUNTIME ERROR', log_handler=logger)
         msg += '\n\nSee the log for more details.'
 
         # Print message in red
