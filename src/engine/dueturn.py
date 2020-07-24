@@ -20,8 +20,10 @@ of the move() code.
 # Unconditional imports (should always be available)
 import cmd          # Player Interface
 import collections  # Useful classes
+import functools    # Useful tools
 import gc           # End-of-game garbage collection
 import itertools    # Useful iteration functions
+import json         # Loading moves
 import platform     # OS identification
 import pprint       # Pretty-format objects for logging
 import random       # Random Number Generator
@@ -54,6 +56,13 @@ from typing import Any, Callable, Dict, Generator, Iterable, Iterator, List, \
 # Union: Use when something could be one of a few types
 #     int_or_str: Union[int, str]
 
+from .booldetailed import BoolDetailed
+from .bound import Bound
+from .item import Item
+from .move import Move
+from .movetype import MoveType
+from .skill import Skill
+from .status_effect import StatusEffect
 from .util import *
 from src.ai import goapy
 from src import logs  # Creating logs
@@ -61,10 +70,7 @@ from src import settings
 from src.textio import (  # Color I/O
     ColoramaCodes, cr, format_color, input_color, print_color
 )
-
-
-# Specify types
-RealNum = Union[int, float]
+import src.engine.json_handler as json_handler
 
 # Game Settings
 playernamelist = {'abc', 'def', 'ghi', 'ned', 'led', 'med', 'red',
@@ -106,856 +112,12 @@ except ModuleNotFoundError:
         logger.info('Missing readline module, auto-completion not available')
 
 
-class InputAdvanced:
-    def __init__(self, input_func=input):
-        self.input_func = input_func
-
-    def __call__(
-            self, prompt, loopIfEquals: Iterable[str] = {''},
-            loopPrompt: Optional = None, breakString: str = 'exit') -> str:
-        if loopPrompt is None:
-            loopPrompt = prompt
-
-        message = True
-        while message != breakString:
-            message = self.input_func(prompt)
-
-            if message == breakString:
-                return None
-            elif message in loopIfEquals:
-                print_color(loopPrompt)
-                continue
-
-            return message
-
-
-class PromptBoolean:
-    def __init__(self, input_func=input):
-        self.input_func = input_func
-
-    def __call__(
-            self,
-            message: str = 'Type {true} to confirm: ',
-            true: Tuple = ('yes', 'y'),
-            false: Optional[Tuple] = None,
-            repeatMessage: str = 'Could not determine your answer; '
-                                 'type again: ',
-            showoptioncount: int = 1) -> bool:
-        """Invokes input with a variable message, checks if it matches a
-        given list of true/false statements, and returns a boolean.
-
-        Ex. >>> PromptBoolean()(message='Type {true} to confirm.',
-                    true=('yes','y'),
-                    false=('no', 'n'),
-                    showoptioncount=2)
-        'Type yes/y to confirm.'\
-
-        """
-        # Checks that the arguments can be converted into the required types
-        try:
-            message = str(message)
-            true = tuple(true)
-            if not isinstance(false, (type(None), tuple)):
-                raise TypeError('`false` must be None or a tuple')
-            showoptioncount = int(showoptioncount)
-        except TypeError as e:
-            raise TypeError('Invalid argument type given') from e
-        if showoptioncount > 0:
-            # Substitute in true ('yes, y') and false ('no', 'n') if available
-            messageTrue = '/'.join(true[:showoptioncount])
-            if false is not None:
-                messageFalse = '/'.join(false[:showoptioncount])
-            else:
-                messageFalse = None
-            # Format colors and true/false options
-            message = format_color(
-                message,
-                namespace={'true': messageTrue, 'false': messageFalse}
-            )
-        else:
-            message = format_color(message)
-        # Run input function
-        inputmessage = self.input_func(message).lower()
-        # Check input to see if one of the options
-        if inputmessage in true:
-            return True
-        elif false is None:
-            return False
-        elif inputmessage in false:
-            return False
-        else:
-            while True:
-                inputmessage = self.input_func(repeatMessage).lower()
-                if inputmessage in true:
-                    return True
-                elif inputmessage in false:
-                    return False
-
-
-def num(x) -> Union[int, float, complex]:
-    """Convert an object into either a int, float, or complex in that order."""
-    try:
-        if hasattr(x, 'is_integer') and not x.is_integer():
-            raise ValueError
-        return int(x)
-    except Exception:
-        try:
-            return float(x)
-        except Exception:
-            n = complex(x)
-            if n.imag == 0:
-                return num(n.real)
-            return complex(num(n.real), num(n.imag))
-
-
 # class Singleton(type):
 #     _instances = {}
 #     def __call__(cls, *args, **kwargs):
 #         if cls not in cls._instances:
 #             cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
 #         return cls._instances[cls]
-
-
-class Dice:
-    """An object that can generate random numbers between its given boundaries.
-
-    Cannot specify its own seed for the Random generator (Mersenne Twister).
-
-    """
-
-    def __init__(self, a=1, b=100):
-        self.num = None
-        self.a = a
-        self.b = b
-
-    def __repr__(self):
-        return '{}({}, {})'.format(
-            self.__class__.__name__,
-            self.a,
-            self.b)
-
-    def __str__(self):
-        return str(self.num)
-
-    def __call__(self, a=None, b=None, gen_float=False):
-        a = self.a if a is None else a
-        b = self.b if b is None else b
-        if gen_float:
-            self.num = random.uniform(a, b)
-        else:
-            self.num = random.randint(a, b)
-        return self.num
-
-
-class Bound:
-    """A bound that is used for generating random numbers.
-
-    Note: The way this class was done, using `randNum` as a way
-        of sharing numbers, is not a recommended idea, since if
-        there were two Fighters using the same Bound object and
-        concurrently interacted with this object, the shared values
-        can conflict. It is recommended this class be revamped to
-        no longer store values, and have value sharing be done by
-        the Fighter itself.
-
-    Using int() will return its previously generated randNum.
-    Using str() will generate a new randNum and return the integer as a string.
-    The generator will always return a float number.
-    If one of the bounds is of type float, a uniform number will be generated:
-        Bound(1).random()      --> 1.0
-        Bound(0, 1).random()   --> 0.0 or 1.0
-        Bound(0, 1.0).random() ~~> 0.18550168219619667
-    str(Bound())       --> Generate random float as a string
-    int(str(Bound()))  --> Generate random truncated float
-    float(Bound())      --> Return last generated float
-    str(float(Bound())) --> Return last generated float as a string
-
-    """
-
-    def __init__(self, left: RealNum,
-                 right: Optional[RealNum] = None):
-        self.left = left
-        if right is None:
-            self.right = self.left
-        else:
-            self.right = right
-        self.randNum = 0.0
-
-    def __float__(self):
-        """Returns self.randNum as a float."""
-        return float(self.randNum)
-
-    def __repr__(self):
-        return '{}({}, {})'.format(
-            self.__class__.__name__,
-            self.left,
-            self.right)
-
-    def random(self) -> RealNum:
-        """Pick a number between the endpoints (inclusive).
-
-        Returns:
-            int: A random integer; both endpoints are integers.
-            float: A random uniform number; one or both endpoints are floats.
-
-        """
-        if self.left < self.right:
-            if isinstance(self.left, float) or isinstance(self.right, float):
-                self.randNum = random.uniform(self.left, self.right)
-            else:
-                self.randNum = float(random.randint(self.left, self.right))
-        else:
-            if isinstance(self.left, float) or isinstance(self.right, float):
-                self.randNum = random.uniform(self.right, self.left)
-            else:
-                self.randNum = float(random.randint(self.right, self.left))
-        return self.randNum
-
-    def average(self) -> float:
-        """Return the mean average between the two endpoints.
-
-        Returns:
-            float: The average between self.left and self.right.
-
-        """
-        return (self.left + self.right) / 2
-
-    def copy(self):
-        """Return a new instance with the same left and right bounds."""
-        return self.__class__(self.left, self.right)
-
-    @staticmethod
-    def callRandom(obj):
-        """Call the random() method on an object if available and return it."""
-        if hasattr(obj, 'random'):
-            return obj.random()
-        return obj
-
-    @staticmethod
-    def callAverage(obj):
-        """Call the average() method on an object if available."""
-        if hasattr(obj, 'average'):
-            return obj.average()
-        return obj
-
-
-class BoolDetailed:
-
-    def __init__(self, boolean, name, description, *other):
-        if not isinstance(boolean, bool):
-            raise TypeError(
-                f'Expected bool for boolean, received object of type {type(boolean)}')
-        self.boolean = boolean
-        self.name = name
-        self.description = description
-        self.other = other
-
-    def __repr__(self):
-        return '{}({}, {}, {}, {})'.format(
-            self.__class__.__name__, self.boolean,
-            repr(self.name), repr(self.description),
-            repr(self.other)
-            )
-
-    def __str__(self):
-        return self.description
-
-    def __bool__(self):
-        return self.boolean
-
-
-# Initialize Move Types
-class MoveType(type):
-    """Base class for all move types.
-Note: Representation of this cannot work."""
-
-    # def __repr__(self):  # Cannot repr a class
-    #     return '{}()'.format(
-    #         self.__class__.__name__)
-
-
-class MTPhysical(MoveType):
-    'Move type for physical moves.'
-    name = 'Physical'
-
-
-class MTMagical(MoveType):
-    'Move type for magical moves.'
-    name = 'Magical'
-
-
-class MTFootsies(MoveType):
-    'Move type for the Footsies Gamemode.'
-    name = 'Footsies'
-
-
-class MTTest(MoveType):
-    'Move type for test moves, used in debugging.'
-    name = 'Test'
-
-
-class MTKirby(MoveType):
-    'Move type for all kirby moves.'
-    name = 'Kirby'
-
-
-class MTBender(MoveType):
-    'Move type for A:TLA Benders.'
-    name = 'Bender'
-
-
-# Initialize Skills
-class Skill:
-    """Base class for all skill types."""
-
-    def __init__(self, level):
-        self.level = level
-
-    def __repr__(self):
-        return '{}({})'.format(
-            self.__class__.__name__,
-            self.level)
-
-    def __eq__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level == other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-    def __ne__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level != other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-    def __gt__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level > other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-    def __lt__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level < other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-    def __ge__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level >= other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-    def __le__(self, other):
-        if isinstance(other, self.__class__):
-            return self.level <= other.level
-        elif isinstance(other, int):
-            return self.level == other
-        else:
-            return NotImplemented
-
-
-class SKAcrobatics(Skill):
-    'Acrobatics Skill, required for complex movement.'
-    name = 'Acrobatics'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKKnifeHandling(Skill):
-    'Acrobatics Skill, required for complex movement.'
-    name = 'Knife Handling'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKBowHandling(Skill):
-    'Acrobatics Skill, required for complex movement.'
-    name = 'Bow Handling'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKEarthBending(Skill):
-    'Earthbending, required for earthbending moves.'
-    name = 'Earthbending'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKWaterBending(Skill):
-    'Waterbending, required for waterbending moves.'
-    name = 'Waterbending'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKFireBending(Skill):
-    'Firebending, required for Firebending moves.'
-    name = 'Firebending'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-class SKAirBending(Skill):
-    'Airbending, required for Airbending moves.'
-    name = 'Airbending'
-
-    def __init__(self, level):
-        super().__init__(level)
-
-
-# Initialize Items and Moves
-class Item:
-    """A item that can be used by a Fighter.
-values - A dictionary of values.
-    Common values include:
-    'name': 'Name of item',
-    'description': 'Description of the item',
-
-    'count': 1  # Amount of the current item.
-    'maxCount': 64  # Maximum amount that can be stacked"""
-
-    def __init__(self, values: dict):
-        self.values = values
-
-    def __repr__(self):
-        return '{}({})'.format(
-            self.__class__.__name__,
-            self.values)
-
-    def __str__(self):
-        return self['name']
-
-    def __len__(self):
-        """Return the amount of the item."""
-        return len(self['count'])
-
-    def __getitem__(self, key):
-        return self.values[key]
-
-    def __setitem__(self, key, value):
-        self.values[key] = value
-
-    def __iter__(self):
-        return iter(self.values)
-
-    def __contains__(self, key):
-        return key in self.values
-
-    def copy(self):
-        return self.__class__(self.values.copy())
-
-
-class Move:
-    """A move that can be used by a Fighter.
-
-    Args:
-        values (Dict[str, Any]): A dictionary of values.
-            Common values include:
-            'name': 'Name of move',
-            'moveTypes': ([MTPhysical],),
-            # MoveType requirements (see skillRequired for explanation)
-            'description': 'Description of the move',
-            'skillRequired': ([SKOneSkill(1)],
-                              [SKFirstSkill(2), SKSecondSkill(3)]),
-                Skills inside lists are combinations.
-                In this example you can use the attack if you have
-                SKOneSkill with level 1, or you have both
-                SKFirstSkill and SKSecondSkill with levels 2 and 3 respectively.
-            'itemRequired': ([('Object1', 1)],),
-                Behaves like skillRequired, except each object is a tuple
-                containing the item's name and the amount of the item
-                that will be consumed.
-            'moveMessage': 'Attack Message',
-
-            'hpValue': Bound(-10, -15),
-            'stValue': Bound(-10),
-            'mpValue': Bound(5),
-            # Stat cost required to use the move
-            'hpCost': Bound(-10, -20),
-            'stCost': Bound(-10, -20),
-            'mpCost': Bound(-20, -30),
-
-            'speed': 40,  # Chance of attack being uncounterable
-            'fastMessage': 'Uncounterable Attack',
-
-            'blockChance': 70,  # Chance of successfully blocking
-            'blockHPValue': Bound(-6, -15),
-            'blockSTValue': Bound(-6, -15),
-            'blockMPValue': Bound(-6, -15),
-            'blockFailHPValue': Bound(-10, -25),
-            'blockFailSTValue': Bound(-10, -25),
-            'blockFailMPValue': Bound(-10, -25),
-            'blockMessage': 'Blocked Attack',
-            'blockFailMessage': 'Attack after failing an block',
-
-            'evadeChance': 70,  # Chance of successfully evading
-            'evadeHPValue': Bound(0),
-            'evadeSTValue': Bound(0),
-            'evadeMPValue': Bound(0),
-            'evadeFailHPValue': Bound(-10, -25),
-            'evadeFailSTValue': Bound(-10, -25),
-            'evadeFailMPValue': Bound(-10, -25),
-            'evadeMessage': 'Evaded Attack',
-            'evadeFailMessage': 'Attack after failing an evade',
-
-            'criticalChance': 10,
-            'criticalHPValue': Bound(-30, -75),
-            'criticalSTValue': Bound(-30, -75),
-            'criticalMPValue': Bound(-30, -75),
-            'blockFailCriticalHPValue': Bound(-30, -75),
-            'blockFailCriticalSTValue': Bound(-30, -75),
-            'blockFailCriticalMPValue': Bound(-30, -75),
-            'evadeFailCriticalHPValue': Bound(-30, -75),
-            'evadeFailCriticalSTValue': Bound(-30, -75),
-            'evadeFailCriticalMPValue': Bound(-30, -75),
-            'criticalMessage': 'Critical Attack',
-            'fastCriticalMessage': 'Uncounterable Critical Attack',
-            'blockFailCriticalMessage': 'Critical after failing a block',
-            'evadeFailCriticalMessage': 'Critical after failing an evade',
-
-            'failureChance': 20,
-            'failureHPValue': Bound(-5, -10),
-            'failureSTValue': Bound(-5, -10),
-            'failureMPValue': Bound(-5, -10),
-            'failureMessage': 'Failed attack',
-
-    """
-
-    def __init__(self, values: Dict[str, Any]):
-        self.values = values
-
-    def __repr__(self):
-        return '{}({})'.format(
-            self.__class__.__name__,
-            self.values)
-
-    def __str__(self):
-        return self['name']
-
-    def __len__(self):
-        return len(self.values)
-
-    def __getitem__(self, key):
-        return self.values[key]
-
-    def __setitem__(self, key, value):
-        self.values[key] = value
-
-    def __iter__(self):
-        return iter(self.values)
-
-    def __contains__(self, key):
-        return key in self.values
-
-    def __format__(self, format):
-        format = format.split()
-        message = []
-        if len(format) == 0:
-            return self['name']
-        elif format[0] == 'hp':
-            message.append(str(num(float(self['hpValue']))))
-        elif format[0] == 'st':
-            message.append(str(num(float(self['stValue']))))
-        elif format[0] == 'mp':
-            message.append(str(num(float(self['mpValue']))))
-        elif format[0] == 'hpF':
-            message.append(str(num(float(self['failureHPValue']))))
-        elif format[0] == 'stF':
-            message.append(str(num(float(self['failureSTValue']))))
-        elif format[0] == 'mpF':
-            message.append(str(num(float(self['failureMPValue']))))
-        elif format[0] == 'hpCrit':
-            message.append(str(num(float(self['criticalHPValue']))))
-        elif format[0] == 'stCrit':
-            message.append(str(num(float(self['criticalSTValue']))))
-        elif format[0] == 'mpCrit':
-            message.append(str(num(float(self['criticalMPValue']))))
-        elif format[0] == 'hpC':
-            message.append(str(num(float(self['hpCost']))))
-        elif format[0] == 'stC':
-            message.append(str(num(float(self['stCost']))))
-        elif format[0] == 'mpC':
-            message.append(str(num(float(self['mpCost']))))
-        elif format[0] == 'hpBlock':
-            message.append(str(num(float(self['blockHPValue']))))
-        elif format[0] == 'stBlock':
-            message.append(str(num(float(self['blockSTValue']))))
-        elif format[0] == 'mpBlock':
-            message.append(str(num(float(self['blockMPValue']))))
-        elif format[0] == 'hpBlockF':
-            message.append(str(num(float(self['blockFailHPValue']))))
-        elif format[0] == 'stBlockF':
-            message.append(str(num(float(self['blockFailSTValue']))))
-        elif format[0] == 'mpBlockF':
-            message.append(str(num(float(self['blockFailMPValue']))))
-        elif format[0] == 'hpBlockFCrit':
-            message.append(str(num(float(self['blockFailCriticalHPValue']))))
-        elif format[0] == 'stBlockFCrit':
-            message.append(str(num(float(self['blockFailCriticalSTValue']))))
-        elif format[0] == 'mpBlockFCrit':
-            message.append(str(num(float(self['blockFailCriticalMPValue']))))
-        elif format[0] == 'hpEvade':
-            message.append(str(num(float(self['evadeHPValue']))))
-        elif format[0] == 'stEvade':
-            message.append(str(num(float(self['evadeSTValue']))))
-        elif format[0] == 'mpEvade':
-            message.append(str(num(float(self['evadeMPValue']))))
-        elif format[0] == 'hpEvadeF':
-            message.append(str(num(float(self['evadeFailHPValue']))))
-        elif format[0] == 'stEvadeF':
-            message.append(str(num(float(self['evadeFailSTValue']))))
-        elif format[0] == 'mpEvadeF':
-            message.append(str(num(float(self['evadeFailMPValue']))))
-        elif format[0] == 'hpEvadeFCrit':
-            message.append(str(num(float(self['evadeFailCriticalHPValue']))))
-        elif format[0] == 'stEvadeFCrit':
-            message.append(str(num(float(self['evadeFailCriticalSTValue']))))
-        elif format[0] == 'mpEvadeFCrit':
-            message.append(str(num(float(self['evadeFailCriticalMPValue']))))
-        elif format[0] == 'speed':
-            message.append(str(num(float(self['speed']))))
-        elif format[0] == 'blockChan':
-            message.append(str(num(float(self['blockChance']))))
-        elif format[0] == 'evadeChan':
-            message.append(str(num(float(self['evadeChance']))))
-        elif format[0] == 'failChan':
-            message.append(str(num(float(self['failureChance']))))
-        else:
-            raise ValueError(
-                f'Tried formatting a move with non-existent argument(s) \
-{format})')
-
-        message = ''.join(message)
-        if format[-1] == 'abs':
-            message = str(abs(num(message)))
-        elif format[-1] == 'neg':
-            message = str(-num(message))
-        return message
-
-    def fmt(self, format) -> str:
-        """A shorter version of the __format__ method.
-
-        Intended for use in moves to shorten messages.
-
-        """
-        return self.__format__(format)
-
-    def averageValues(self, keyFormat) -> RealNum:
-        """Calculate the average move values with stats.
-
-        If the value is a Bound, will use average of the Bound.
-
-        Variables provided for keyFormat:
-            stat - The current stat being iterated through
-
-        Example:
-            moveObj.averageValues('{stat}Value')
-
-        """
-        total = []
-        for stat in Fighter.allStats:
-            key = eval("f'''" + keyFormat + "'''")
-            if key in self:
-                if isinstance(self[key], Bound):
-                    total.append(self[key].average())
-                else:
-                    total.append(self[key])
-        if (len_total := len(total)) == 0:
-            # Return 0 for no values found
-            return 0
-        return sum(total) / len_total
-
-    def info(self) -> str:
-        """Return an informational string about the move.
-
-        The description will be formatted with an environment containing:
-            hp, st, mp: The respective StatInfo objects from Fighter.
-            self: The instance of Move that the description is in.
-        It will also have color placeholders formatted with `format_color`.
-
-        """
-        hp = Fighter.allStats['hp']
-        st = Fighter.allStats['st']
-        mp = Fighter.allStats['mp']
-        return format_color(self['description'], namespace=locals())
-
-    @staticmethod
-    def parseUnsatisfactories(unsatisfactories):
-        """Generate a string explaining why a move could not be used.
-
-        Args:
-            unsatisfactories: This should come from the output of
-                Fighter.findMove where showUnsatisfactories = True.
-
-        Returns:
-            str: The explanation."""
-        reasonMessageList = []
-        for reason in unsatisfactories:
-            if reason.name == 'MISSINGMOVETYPE':
-                for moveType in reason.other[0]:
-                    reasonMessageList.append(
-                        f'\n"{moveType.name}" Move Type required')
-            elif reason.name == 'MISSINGSKILL':
-                for skill in reason.other[0]:
-                    name = skill.name
-                    level = skill.level
-
-                    reasonMessageList.append(
-                        f'\nLevel {level} "{name}" Skill required')
-            elif reason.name == 'MISSINGITEM':
-                for item in reason.other[0]:
-                    name = item['name']
-                    count = item['count'] if 'count' in item else None
-
-                    if count is None:
-                        countMsg = 'Item'
-                    else:
-                        plur = 's' if count != 1 else ''
-                        countMsg = f'{count:,} of item{plur}'
-
-                    reasonMessageList.append(
-                        f'\n{countMsg} "{name}" required')
-
-        reasonMessageList = ', '.join(reasonMessageList)
-
-        return reasonMessageList
-
-    def searchKeys(self, sub) -> List[str]:
-        """Search through the move's keys and return a list of all keys
-that is a superset of sub."""
-        return [k for k in self if sub in k]
-
-    def searchValues(self, sub) -> List:
-        """Search through the move's items and return a list of all values
-if the corresponding key is a superset of sub."""
-        return [v for k, v in self if sub in k]
-
-    def searchItems(self, sub) -> Dict:
-        """Search through the move's items and return a dictionary of all
-key-value pairs if the key is a superset of sub."""
-        return {k: v for k, v in self if sub in k}
-
-    # def averageCounterMoveValues(self, counter):
-    #     """Calculate the average move values for a counter."""
-    #     return sum(
-    #         [move[f'{counter}{stat.upper()}Value']
-    #             for stat in Fighter.allStats
-    #             if f'{counter}{stat.upper()}Value' in move
-    #             ]
-    #         )
-
-    # def averageCounterMoveFailValues(self, counter):
-    #     """Calculate the average move fail values for a counter.
-    # Ignores criticals."""
-    #     return sum(
-    #         [move[f'{counter}Fail{stat.upper()}Value']
-    #             for stat in Fighter.allStats
-    #             if f'{counter}Fail{stat.upper()}Value' in move
-    #             ]
-    #         )
-
-
-class StatusEffect:
-    """A status effect that goes into Fighter().status_effects.
-
-    Moves should store this in Move()['status_effects'].
-
-    When a move applies a StatusEffect, it should be copied onto
-    the affected Fighter.
-
-    Args:
-        values (Dict[str, Any]): A dictionary of values.
-            Common values include:
-            'name': 'Name of status effect',
-            'description': 'Description of the effect',
-
-            'target': 'sender' or 'target',
-            'chances': (
-                (40,),
-                # Applies to any situation only if no other conditions
-                # were satisfied and move doesn't fail
-                (0, 'failure'),
-                # Applies to sender if they fail
-                (70, 'fast'),
-                # Applies to target on fast attack
-                (100, 'critical'),
-                # Applies to target on critical regardless of counter
-                (40, 'block'),
-                # Applies to target if block was attempted
-                # Note: any counter name in Fighter.allCounters can be used
-                (0, 'blockSuccess'),
-                # Applies to target if successful block
-                (0, 'blockFailure')
-                # Applies to target if block failed
-                (50, 'uncountered'),
-                # Applies to target if no counters were successful
-            ),
-            'duration': 5,
-
-            'receiveMessage': '{self} has been affected!',
-            'applyMessage': '{self} takes {-hpValue} damage '
-                            'but receives {stValue} {st.ext_full}!',
-                            # {st.ext_full} is the placeholder for stamina
-            'wearoffMessage': "{self}'s effect has worn off.",
-
-            'hpValue': Bound(-1, -3),
-            'stValue': Bound(1, 3),
-            'mpValue': Bound(1, 3),
-            'noMove': '{self} cannot move!',
-            'noCounter': '{self} cannot counter!',
-
-    """
-
-    def __init__(self, values: Dict[str, Any]):
-        self.values = values
-
-    def __repr__(self):
-        return '{}({})'.format(
-            self.__class__.__name__,
-            self.values)
-
-    def __str__(self):
-        return self['name']
-
-    def __len__(self):
-        return len(self.values)
-
-    def __getitem__(self, key):
-        return self.values[key]
-
-    def __setitem__(self, key, value):
-        self.values[key] = value
-
-    def __iter__(self):
-        return iter(self.values)
-
-    def __contains__(self, key):
-        return key in self.values
-
-    def copy(self):
-        values = self.values.copy()
-        for k, v in values.items():
-            if hasattr(v, 'copy'):
-                values[k] = v.copy()
-        return self.__class__(values)
 
 
 class FighterBattleShell:
@@ -1246,7 +408,7 @@ class FighterBattleMoveShell(
             if unsatisfactories:
                 # Missing dependencies; explain then request another move
                 reasonMessage = f'Could not use {moveFind}; ' \
-                                + moveFind.parseUnsatisfactories(
+                                + moveFind.parse_unsatisfactories(
                                     unsatisfactories)
                 if 'returnTo' in self.namespace:
                     print_color(reasonMessage)
@@ -1361,7 +523,7 @@ class FighterBattleMoveInfoShell(
 
         # If search worked, print info about the move
         if not isinstance(moveFind, (type(None), BoolDetailed)):
-            print_color(moveFind.info())
+            print_color(Fighter.get_move_info(moveFind))
             print()
             return
 
@@ -1535,6 +697,9 @@ def {stat}(self, {stat}):
 {self.inventory}, {self.isPlayer}, \
 {self.AI!r})'
 
+    def __bool__(self):
+        return self.hp > 0
+
     def __str__(self):
         return format_color(self.name)
 
@@ -1556,8 +721,19 @@ def {stat}(self, {stat}):
         raise AttributeError(
             'This attribute cannot be changed directly; use self.name')
 
-    def __bool__(self):
-        return self.hp > 0
+    @classmethod
+    def get_move_info(cls, move):
+        """Return an informational string about a move.
+
+        The description will be formatted with an environment containing:
+            move: The instance of Move that the description is in.
+            *cls.allStats: All StatInfo objects that Fighter has.
+        It will also format color placeholders using `format_color()`.
+
+        """
+        namespace = cls.allStats.copy()
+        namespace['move'] = move
+        return format_color(move['description'], namespace=namespace)
 
     def updateStatusEffectsDuration(self):
         """Update all durations and remove completed status effects.
@@ -1587,7 +763,7 @@ def {stat}(self, {stat}):
                 key = f'{stat}Value'
                 if key in effect and hasattr(self, stat):
                     statConstant = stat_info.int_full
-                    value = Bound.callRandom(effect[key])
+                    value = Bound.call_random(effect[key])
                     value *= (
                         self.battle_env.base_values_multiplier_percent / 100
                     )
@@ -1898,7 +1074,7 @@ values - A dictionary of values to compare."""
         if showUnsatisfactories \
                 and isinstance(move, Move):
             def req_plural(req, req_name):
-                'Create the missing requirement message.'
+                """Create the missing requirement message."""
                 length = len(req[1])
                 plur = 's are' if length != 1 else ' is'
                 return f'{length} {req_name} requirement{plur} not satisfied'
@@ -2211,7 +1387,7 @@ below is being used."""
 
             def chance_to_apply(chance):
                 result = (
-                    Dice()(gen_float=True) <= chance
+                    random.uniform(1, 100) <= chance
                     * self.battle_env.base_status_effects_chance_multiplier
                     / 100
                 )
@@ -2311,7 +1487,7 @@ below is being used."""
                     self, move, sender, info=('noneMove',))
             return
         # If move fails by chance
-        if Dice()(gen_float=True) <= self.genChance(move, 'failure'):
+        if random.uniform(1, 100) <= self.genChance(move, 'failure'):
             logger.debug(f'"{move}" failed against {self.decoloredName}')
             if sender is not None:
                 logger.debug(f'{sender.decoloredName} is receiving '
@@ -2329,7 +1505,7 @@ below is being used."""
                 return
         # If move counter is possible
         if sender is not None \
-                and Dice()(gen_float=True) <= self.genChance(move, 'speed'):
+                and random.uniform(1, 100) <= self.genChance(move, 'speed'):
             # Don't counter if an effect has noCounter
             def hasNoCounterStatusEffect():
                 for effect in self.status_effects:
@@ -2376,7 +1552,7 @@ below is being used."""
 
     def moveReceiveCounterNone(self, move, sender):
         # If move is critical
-        if Dice()(gen_float=True) <= self.genChance(move, 'critical'):
+        if random.uniform(1, 100) <= self.genChance(move, 'critical'):
             logger.debug(f'"{move}" against {self.decoloredName} '
                          'is a critical')
             self.genValues(move)
@@ -2404,7 +1580,7 @@ below is being used."""
 
     def moveReceiveCounterFalse(self, move, sender):
         # If move is critical
-        if Dice()(gen_float=True) <= self.genChance(move, 'critical'):
+        if random.uniform(1, 100) <= self.genChance(move, 'critical'):
             logger.debug(f'"{move}" against {self.decoloredName} '
                          'is a fast critical')
             self.genCriticalValues(move)
@@ -2432,7 +1608,7 @@ below is being used."""
 
     def moveReceiveCounterBlock(self, move, sender):
         # If move is blocked
-        if Dice()(gen_float=True) <= self.genChance(move, 'block'):
+        if random.uniform(1, 100) <= self.genChance(move, 'block'):
             logger.debug(f'"{move}" against {self.decoloredName} is blocked')
             self.genCounterValues(move, 'block')
             self.printMove(sender, self, move, 'blockMessage')
@@ -2446,7 +1622,7 @@ below is being used."""
                     self, move, sender, info=info)
         else:
             # If move is critical after failed block
-            if Dice()(gen_float=True) <= self.genChance(move, 'critical'):
+            if random.uniform(1, 100) <= self.genChance(move, 'critical'):
                 logger.debug(f'"{move}" against {self.decoloredName} '
                              'is failed block critical')
                 self.genCounterFailCriticalValues(move, 'block')
@@ -2475,7 +1651,7 @@ below is being used."""
 
     def moveReceiveCounterEvade(self, move, sender):
         # If move is evaded
-        if Dice()(gen_float=True) <= self.genChance(move, 'evade'):
+        if random.uniform(1, 100) <= self.genChance(move, 'evade'):
             logger.debug(f'"{move}" against {self.decoloredName} is evaded')
             self.genCounterValues(move, 'evade')
             self.printMove(sender, self, move, 'evadeMessage')
@@ -2489,7 +1665,7 @@ below is being used."""
                     self, move, sender, info=info)
         else:
             # If move is critical after failed evade
-            if Dice()(gen_float=True) <= self.genChance(move, 'critical'):
+            if random.uniform(1, 100) <= self.genChance(move, 'critical'):
                 logger.debug(f'"{move}" against {self.decoloredName} '
                              'is failed evade critical')
                 self.genCounterFailCriticalValues(move, 'evade')
@@ -2795,7 +1971,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= eval(
@@ -2852,7 +2028,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        cost = Bound.callRandom(move[statName])
+        cost = Bound.call_random(move[statName])
 
         cost *= self.battle_env.base_energies_cost_multiplier_percent / 100
         cost *= eval(
@@ -2891,7 +2067,7 @@ chanceType - The type of the chance to extract.
             return chance
 
         elif chanceType in validChancesNonCounter:
-            chance = Bound.callRandom(move[chanceName])
+            chance = Bound.call_random(move[chanceName])
 
             chance *= eval(
                 f'self.battle_env.base_{chanceType}_chance_percent') / 100
@@ -2901,7 +2077,7 @@ chanceType - The type of the chance to extract.
         elif chanceType in validChancesCounter:
             chanceConstant = self.allCounters[chanceType]
 
-            chance = Bound.callRandom(move[chanceName])
+            chance = Bound.call_random(move[chanceName])
 
             chance *= eval(
                 f'self.battle_env.base_{chanceConstant}_chance_percent') / 100
@@ -2929,7 +2105,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= eval(
@@ -2980,7 +2156,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= eval(
@@ -3031,7 +2207,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= eval(
@@ -3083,7 +2259,7 @@ changeRandNum - If True, change the move's randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= eval(
@@ -3125,7 +2301,7 @@ changeRandNum - If True, change the move's failureValue.randNum
         if statName not in move:
             return None
 
-        value = Bound.callRandom(move[statName])
+        value = Bound.call_random(move[statName])
 
         value *= self.battle_env.base_values_multiplier_percent / 100
         value *= self.battle_env.base_failure_multiplier_percent / 100
@@ -3202,7 +2378,7 @@ data - A dictionary for storing any values either for future computation
         """Return the average of a move stat cost.
 If the cost is a Bound, returns the average of the left and right parameters.
 Otherwise, returns the cost as is."""
-        return Bound.callAverage(move[f'{stat}Cost'])
+        return Bound.call_average(move[f'{stat}Cost'])
 
     @classmethod
     def analyseMoveCostBoolean(cls, user, move, stats=None):
@@ -3430,16 +2606,16 @@ user maximum {stat} is {eval(f'user.{stat}Max')}, and minimum move cost \
 
         return move
 
-    def avgMoveValuesWeighted(self, user, move, keyFormat):
+    def avgMoveValuesWeighted(self, user, move, key_format):
         """Calculates the average value for each stat in a set of key values
 found by move.averageValues(keySubstring), scales them by the internal
 AI data values, and returns the sum.
-Variables provided for keyFormat:
+Variables provided for key_format:
     stat - The current stat being iterated through
 Example usage: AIobj.averageMoveValuesWeighted(user, move, '{stat}Value')"""
         total = 0
         for stat in user.allStats:
-            key = eval("f'''" + keyFormat + "'''")
+            key = eval("f'''" + key_format + "'''")
             if key in move:
                 # Obtain value, and get average if it is a Bound
                 value = move[key]
@@ -3521,16 +2697,16 @@ stat - The stat of the value. Used in algorithm to decide computations."""
             f'for {user.decoloredName}, returning {newValue}')
         return newValue
 
-    def analyseMoveValuesWeighted(self, user, move, keyFormat):
+    def analyseMoveValuesWeighted(self, user, move, key_format):
         """Calculates the average value for each stat in a set of key values
 found by move.averageValues(keySubstring), scales them by the internal
 AI data values modified by an algorithm, and returns the sum.
-Variables provided for keyFormat:
+Variables provided for key_format:
     stat - The current stat being iterated through
 Example usage: AIobj.averageMoveValuesWeighted(user, move, '{stat}Value')"""
         total = 0
         for stat in user.allStats:
-            key = eval("f'''" + keyFormat + "'''")
+            key = eval("f'''" + key_format + "'''")
             if key in move:
                 # Obtain value, and get average if it is a Bound
                 value = move[key]
@@ -3964,7 +3140,7 @@ class FighterAIFootsies(FighterAIGeneric):
     def get_attacks(cls, user):
         attacks = []
         for move in user.moves:
-            if 'hpValue' in move and Bound.callAverage(move['hpValue']) < 0:
+            if 'hpValue' in move and Bound.call_average(move['hpValue']) < 0:
                 attacks.append(move)
         return attacks
 
@@ -4072,7 +3248,7 @@ class FighterAIFootsies(FighterAIGeneric):
 moveTemplate = [
     Move({
         'name': '',
-        'moveTypes': ([MTPhysical],),
+        'moveTypes': ([MoveType('Physical')],),
         'description': '',
         'skillRequired': ([],),
         'itemRequired': ([
@@ -4172,1859 +3348,6 @@ noneMove = Move({
     'name': 'None',
     'description': 'Do nothing.'
 })
-moveList = [
-    noneMove,
-
-    Move({
-        'name': 'Kick',
-        'moveTypes': ([MTPhysical],),
-        'description': """A simple kick.
-A basic medium-damage attack, with a 1:2 damage to cost ratio.""",
-        'skillRequired': ([SKAcrobatics(1)],),
-        'moveMessage': """\
-{sender} kicks {target} for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -15),
-        'stCost': Bound(-20, -30),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being kicked.',
-
-                'target': 'target',
-                'chances': ((15, 'uncountered'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} swiftly kicks {target} for {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-6, -9),
-        'blockFailHPValue': Bound(-10, -20),
-        'blockMessage': """\
-{sender} attempts to kick {target} but {target} blocks it, \
-taking {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} attempts to kick {target} and {target} fails to block it, \
-taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 50,
-        'evadeFailHPValue': Bound(-15, -25),
-        'evadeMessage': """\
-{sender} attempts to kick {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} attempts to kick {target} and {target} fails to evade it, \
-taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-20, -30),
-        'blockFailCriticalHPValue': Bound(-20, -40),
-        'evadeFailCriticalHPValue': Bound(-30, -50),
-        'criticalMessage': """\
-A headshot!
-{sender} kicks {target} for {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-A headshot!
-{sender} swiftly kicks {target} for {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-A headshot!
-{sender} attempts to kick {target} and {target} fails to block it, \
-taking {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-A headshot!
-{sender} attempts to kick {target} and {target} fails to evade it, \
-taking {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 20,
-        'failureHPValue': Bound(-5, -10),
-        'failureMessage': """\
-{sender} tries to kick {target} but falls on the ground \
-and loses {move:hpF neg} {hp.ext_full}.""",
-        }
-    ),
-    Move({
-        'name': 'Jab',
-        'moveTypes': ([MTPhysical],),
-        'description': """A quick punch.
-An easy low-damage attack, with a low chance of countering.""",
-        'moveMessage': """\
-{sender} jabs {target} for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-5, -10),
-        'stCost': Bound(-15, -20),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being punched.',
-
-                'target': 'target',
-                'chances': ((10, 'uncountered'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 70,
-        'fastMessage': """\
-{sender} swiftly jabs {target} for {move:hp neg} damage!""",
-
-        'blockChance': 80,
-        'blockHPValue': Bound(-1, -2),
-        'blockFailHPValue': Bound(-8, -13),
-        'blockMessage': """\
-{sender} attempts to jab {target} but {target} blocks it, \
-taking {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} attempts to jab {target} and {target} fails to block it, \
-taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': Bound(-10, -20),
-        'evadeMessage': """\
-{sender} attempts to jab {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} attempts to jab {target} and {target} fails to evade it, \
-taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 20,
-        'criticalHPValue': Bound(-10, -20),
-        'blockFailCriticalHPValue': Bound(-15, -25),
-        'evadeFailCriticalHPValue': Bound(-20, -30),
-        'criticalMessage': """\
-A headshot!
-{sender} jabs {target} for {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-A headshot!
-{sender} swiftly jabs {target} for {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-A headshot!
-{sender} attempts to jab {target} and {target} fails to block it, \
-taking {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-A headshot!
-{sender} attempts to jab {target} and {target} fails to evade it, \
-taking {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 8,
-        'failureMessage': """\
-{sender} tries to jab {target} but misses.""",
-        }
-    ),
-    Move({
-        'name': 'Sword',
-        'moveTypes': ([MTPhysical],),
-        'description': """Slash with a sword.
-A strong weapon with high {st.ext_full} costs but a slightly better damage
-to cost ratio (1:2), and a small chance to deal a critical,
-potentially one-shot blow.""",
-        'itemRequired': ([{'name': 'Sword'}, ],),
-        'moveMessage': """\
-{sender} strikes {target} with a sword for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-15, -30),
-        'stCost': Bound(-35, -50),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Bleeding',
-                'description': 'Bleeding from a sword wound.',
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'),),
-                'duration': 3,
-
-                'receiveMessage': '{self} is now bleeding!',
-                'applyMessage': '{self} took {-hpValue} bleeding damage!',
-                'wearoffMessage': '{self} has stopped bleeding.',
-
-                'hpValue': Bound(-2, -4),
-            }),
-        ],
-
-        'speed': 20,
-        'fastMessage': """\
-{sender} quickly strikes {target} with a sword for {move:hp neg} damage!""",
-
-        'blockChance': 0,
-        'blockHPValue': Bound(-3, -6),
-        'blockFailHPValue': Bound(-20, -35),
-        'blockMessage': """\
-{sender} attempts to strike {target} with a sword but {target} blocks it, \
-taking only {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} attempts to strike {target} with a sword and {target} fails to block,\
- taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 50,
-        'evadeFailHPValue': Bound(-25, -40),
-        'evadeMessage': """\
-{sender} attempts to strike {target} with a sword but {target} dodges it!""",
-        'evadeFailMessage': """\
-{sender} attempts to strike {target} with a sword \
-and {target} fails to dodge, taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 3,
-        'criticalHPValue': Bound(-75, -150),
-        'blockFailCriticalHPValue': Bound(-100, -175),
-        'evadeFailCriticalHPValue': Bound(-125, -200),
-        'criticalMessage': """\
-{sender} pulls a Kingdom Come Deliverance and critically strikes {target} \
-with a sword for {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-Too slow!
-{sender} pulls a Kingdom Come Deliverance and critically strikes {target} \
-with a sword for {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} pulls a Kingdom Come Deliverance and bypasses {target}'s \
-block with a sword, critically striking them for \
-{move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} pulls a Kingdom Come Deliverance and predicts {target}'s \
-dodge, critically striking them for {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 15,
-        'failureHPValue': Bound(-15, -30),
-        'failureMessage': """\
-{sender} tries to strike {target} with a sword but falls on the ground \
-and hits themselves for {move:hpF neg} damage.""",
-        }
-    ),
-    Move({
-        'name': 'Fire Ball',
-        'moveTypes': ([MTMagical],),
-        'description': """Summon a fireball.
-A standard, medium-damage attack that costs {mp.ext_full}.""",
-        'moveMessage': """\
-{sender} shoots a ball of fire at {target} for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'mpCost': Bound(-25, -40),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Fire',
-                'description': "You're on fire!",
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'), (30, 'failure')),
-                'duration': 2,
-
-                'receiveMessage': '{self} is on fire!',
-                'applyMessage': '{self} took {-hpValue} damage from fire!',
-                'wearoffMessage': '{self} is no longer on fire.',
-
-                'hpValue': Bound(-3, -6),
-            }),
-        ],
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} shoots a FAST ball of fire at {target} for {move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': Bound(-5, -15),
-        'blockFailHPValue': Bound(-10, -20),
-        'blockMessage': """\
-{sender} shoots a ball of fire at {target} but {target} blocks it, taking \
-{move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} shoots a ball of fire at {target} and {target} fails to block it, \
-taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': Bound(-15, -30),
-        'evadeMessage': """\
-{sender} shoots a ball of fire at {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} shoots a ball of fire at {target} and {target} fails to evade it, \
-taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 20,
-        'criticalHPValue': Bound(-20, -40),
-        'blockFailCriticalHPValue': Bound(-20, -40),
-        'evadeFailCriticalHPValue': Bound(-30, -60),
-        'criticalMessage': """\
-{sender} shoots a DEADLY ball of fire at {target} for \
-{move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} shoots a FAST AND DEADLY ball of fire at {target} \
-for {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} shoots a DEADLY ball of fire at {target} and {target} fails to block \
-it, taking {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} shoots a DEADLY ball of fire at {target} \
-and {target} fails to evade it, taking {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 20,
-        'failureHPValue': Bound(-15, -20),
-        'failureMessage': """\
-{sender} tries to shoot a ball of fire but it explodes in their face for \
-{move:hpF neg} damage!""",
-        },
-    ),
-    Move({
-        'name': 'Slam',
-        'moveTypes': ([MTPhysical],),
-        'description': """Slam down on your foe.
-A move with high variability in damage output but with luck,
-offers 25 damage at 40 {st.ext_full} cost instead of 50 (1:2 ratio).""",
-        'skillRequired': ([SKAcrobatics(1)],),
-        'moveMessage': """\
-{sender} jumps above {target} and slams down for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-15, -25),
-        'stCost': Bound(-30, -40),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being slammed on.',
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly jumps above {target} and slams down for \
-{move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-8, -15),
-        'blockFailHPValue': Bound(-20, -25),
-        'blockMessage': """\
-{sender} tries to slam down on {target} but {target} blocks it, \
-taking only {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} tries to slam down on {target} and {target} fails to block it, \
-taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': Bound(-25, -40),
-        'evadeMessage': """\
-{sender} tries to slam down on {target} but {target} dodges it!""",
-        'evadeFailMessage': """\
-{sender} tries to slam down on {target} and {target} fails to dodge it, \
-taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-23, -38),
-        'blockFailCriticalHPValue': Bound(-30, -38),
-        'evadeFailCriticalHPValue': Bound(-38, -60),
-        'criticalMessage': """\
-{sender} slams down on {target} for {move:hpCrit neg} critical damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly slams down on {target} for \
-{move:hpCrit neg} critical damage!""",
-        'blockFailCriticalMessage': """\
-{sender} tries to slam down on {target} and {target} fails to block it, \
-taking {move:hpBlockFCrit neg} critical damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} tries to slam down on {target} and {target} fails to dodge it, \
-taking {move:hpEvadeFCrit neg} critical damage!""",
-
-        'failureChance': 15,
-        'failureHPValue': Bound(-5, -10),
-        'failureMessage': """\
-{sender} tries to slam down on {target} but hits the ground, \
-losing {move:hpF neg} {hp.ext_full}!""",
-        }
-    ),
-    Move({
-        'name': 'Knife',
-        'moveTypes': ([MTPhysical],),
-        'description': """Slash with a knife.
-A medium-damage weapon that is dangerous to counter, and has a
-relatively high critical chance.""",
-        'skillRequired': ([SKKnifeHandling(1)],),
-        'itemRequired': ([
-            {'name': 'Knife'},
-            ],),
-        'moveMessage': """\
-{sender} slashes {target} with a knife, dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-15, -20),
-        'stCost': Bound(-30, -35),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Bleeding',
-                'description': 'Bleeding from a knife wound.',
-
-                'target': 'target',
-                'chances': ((20, 'uncountered'),),
-                'duration': 2,
-
-                'receiveMessage': '{self} is now bleeding!',
-                'applyMessage': '{self} took {-hpValue} bleeding damage!',
-                'wearoffMessage': '{self} has stopped bleeding.',
-
-                'hpValue': -2,
-            }),
-        ],
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly slashes {target} with a knife, dealing \
-{move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': Bound(-6, -12),
-        'blockFailHPValue': Bound(-15, -25),
-        'blockMessage': """\
-{sender} tries slashing {target} with a knife but {target} blocks, \
-dealing only {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} slashes {target} with a knife and {target} failed to block, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 45,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} tries slashing {target} with a knife but {target} dodged it!""",
-        'evadeFailMessage': """\
-{sender} slashes {target} with a knife and {target} failed to dodge, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 20,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-25, -35),
-        'evadeFailCriticalHPValue': Bound(-30, -40),
-        'criticalMessage': """\
-A critical!
-{sender} slashes {target} with a knife, dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-A critical!
-{sender} swiftly slashes {target} with a knife, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-A critical!
-{sender} slashes {target} with a knife and {target} failed to block, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-A critical!
-{sender} slashes {target} with a knife and {target} failed to dodge, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 10,
-        'failureHPValue': Bound(-10, -15),
-        'failureMessage': """\
-{sender} tries slashing {target} with a knife but hits themself, \
-dealing {move:hpF neg} damage.""",
-        }
-    ),
-    Move({
-        'name': 'Throw Knife',
-        'moveTypes': ([MTPhysical],),
-        'description': """Throw a knife.
-A medium-damage weapon, boasting a high critical chance,
-but requires you to dispose a knife.
-It is harder to block than to evade, but failing evasion is worse.""",
-        'skillRequired': ([SKKnifeHandling(2)],),
-        'itemRequired': ([
-            {
-                'name': 'Knife',
-                'count': 1
-            },
-            ],),
-        'moveMessage': """\
-{sender} throws a knife at {target}, dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'stCost': Bound(-25, -30),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Bleeding',
-                'description': 'Bleeding from a knife wound.',
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'),),
-                'duration': 2,
-
-                'receiveMessage': '{self} is now bleeding!',
-                'applyMessage': '{self} took {-hpValue} bleeding damage!',
-                'wearoffMessage': '{self} has stopped bleeding.',
-
-                'hpValue': -2,
-            }),
-        ],
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} swiftly throws a knife at {target}, dealing {move:hp neg} damage!""",
-
-        'blockChance': 40,
-        'blockHPValue': Bound(-6, -12),
-        'blockFailHPValue': Bound(-15, -25),
-        'blockMessage': """\
-{sender} throws a knife at {target} who is blocking, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} throws a knife at {target} and {target} failed to block, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 60,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} throws a knife at {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} throws a knife at {target} and {target} failed to evade, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 30,
-        'criticalHPValue': Bound(-20, -30),
-        'blockFailCriticalHPValue': Bound(-25, -35),
-        'evadeFailCriticalHPValue': Bound(-30, -40),
-        'criticalMessage': """\
-A critical!
-{sender} throws a knife at {target}, dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-A critical!
-{sender} swiftly throws a knife at {target}, dealing \
-{move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-A critical!
-{sender} throws a knife at {target} and {target} failed to block, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-A critical!
-{sender} throws a knife at {target} and {target} failed to evade, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 10,
-        'failureHPValue': Bound(-10, -15),
-        'failureMessage': """\
-{sender} tries to throw a knife at {target} but hits themself, \
-dealing {move:hpF neg} damage.""",
-        }
-    ),
-    Move({
-        'name': 'Longbow',
-        'moveTypes': ([MTPhysical],),
-        'description': """Fire an arrow with a longbow.
-A medium-damage weapon that requires a lot of {st.ext_full}, but will deal
-moderate {st.ext_full} damage.""",
-        'skillRequired': ([SKBowHandling(1)],),
-        'itemRequired': ([
-            {'name': 'Longbow'},
-            {
-                'name': 'Arrow',
-                'count': 1
-            },
-            ],),
-        'moveMessage': """\
-{sender} shoots an arrow at {target}, dealing {move:hp neg} damage \
-and draining {move:st neg} {st.ext_full}!""",
-
-        'hpValue': Bound(-15, -25),
-        'stValue': Bound(-15, -25),
-        'stCost': Bound(-35, -50),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Bleeding',
-                'description': 'Bleeding from an arrow wound.',
-
-                'target': 'target',
-                'chances': ((20, 'uncountered'),),
-                'duration': 2,
-
-                'receiveMessage': '{self} is now bleeding!',
-                'applyMessage': '{self} took {-hpValue} bleeding damage!',
-                'wearoffMessage': '{self} has stopped bleeding.',
-
-                'hpValue': Bound(-2, -4),
-            }),
-        ],
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} quickly shoots an arrow at {target}, \
-dealing {move:hp neg} damage and draining {move:st neg} {st.ext_full}!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-8, -13),
-        'blockFailHPValue': Bound(-20, -30),
-        'blockFailSTValue': Bound(-10, -20),
-        'blockMessage': """\
-{sender} shoots an arrow at {target} but {target} blocks it, \
-only dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} shoots an arrow at {target} and {target} fails to block it, \
-dealing {move:hpBlockF neg} damage and draining \
-{move:stBlockF neg} {st.ext_full}!""",
-
-        'evadeChance': 60,
-        'evadeFailHPValue': Bound(-15, -30),
-        'evadeFailSTValue': Bound(-10, -20),
-        'evadeMessage': """\
-{sender} shoots an arrow at {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} shoots an arrow at {target} and {target} fails to evade it, \
-dealing {move:hpEvadeF neg} damage and draining \
-{move:stEvadeF neg} {st.ext_full}!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-30, -40),
-        'criticalSTValue': Bound(-10, -30),
-        'blockFailCriticalHPValue': Bound(-30, -45),
-        'blockFailCriticalSTValue': Bound(-20, -40),
-        'evadeFailCriticalHPValue': Bound(-35, -45),
-        'evadeFailCriticalSTValue': Bound(-25, -45),
-        'criticalMessage': """\
-{sender} critically strikes {target} with an arrow, \
-dealing {move:hpCrit neg} damage and draining \
-{move:stCrit neg} {st.ext_full}!""",
-        'fastCriticalMessage': """\
-{sender} critically and swiftly strikes {target} with an arrow, \
-dealing {move:hpCrit neg} damage and draining \
-{move:stCrit neg} {st.ext_full}!""",
-        'blockFailCriticalMessage': """\
-{target} fails to block and {sender} critically strikes {target} \
-with an arrow, dealing {move:hpBlockFCrit neg} damage and \
-draining {move:stBlockFCrit neg} {st.ext_full}!""",
-        'evadeFailCriticalMessage': """\
-{target} fails to evade and {sender} critically strikes {target} \
-with an arrow, dealing {move:hpEvadeFCrit neg} damage and \
-draining {move:stEvadeFCrit neg} {st.ext_full}!""",
-
-        'failureChance': 20,
-        'failureHPValue': Bound(-5, -10),
-        'failureSTValue': Bound(-1, -5),
-        'failureMessage': """\
-{sender} tries to shoot an arrow at {target} but hits themself, \
-losing {move:hpF neg} {hp.ext_full} and \
-{move:stF neg} {st.ext_full}.""",
-        }
-    ),
-    Move({
-        'name': 'Equilibrium',
-        'moveTypes': ([MTMagical],),
-        'description': """Convert 25 {hp.ext_full} into magicka- {mp.ext_full}.
-This move is uncounterable; the opponent cannot stop this process.
-there is a 1/10 chance of failing, which takes away both {hp.ext_full}
-and {mp.ext_full}.""",
-
-        'hpCost': -25,
-        'mpCost': 25,
-
-        'speed': 100,
-        'fastMessage': """\
-{sender} uses Equilibrium, losing {move:hpC neg} {hp.ext_full} for \
-{move:mpC} {mp.ext_full}!""",
-
-        'criticalChance': 0,
-
-        'failureChance': 10,
-        'failureHPValue': Bound(-5, -15),
-        'failureMPValue': Bound(-10, -25),
-        'failureMessage': """\
-{sender} tries using Equilibrium but it backfires, making {sender} lose \
-{int(move.fmt('hpF neg')) + int(move.fmt('hpC neg'))} {hp.ext_full} \
-and {move:mpF neg} {mp.ext_full}.""",
-        }
-    ),
-    Move({
-        'name': 'Bobomb',
-        'moveTypes': ([MTPhysical],),
-        'description': """Throw a bob-omb.
-A bob-omb is hefty to throw, but is powerful and hard to evade.""",
-        'itemRequired': ([
-            {
-                'name': 'Bob-omb',
-                'count': 1
-            },
-            ],),
-        'moveMessage': """\
-{sender} throws a bob-omb at {target} and it explodes, dealing \
-{move:hp neg} damage!""",
-
-        'hpValue': Bound(-15, -35),
-        'stCost': Bound(-25, -40),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from a bob-omb explosion.',
-
-                'target': 'target',
-                'chances': ((20, 'uncountered'), (20, 'failure')),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly throws a bob-omb at {target} and it explodes, dealing \
-{move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-20, -35),
-        'blockMessage': """\
-{sender} throws a bob-omb at {target} but {target} blocks, dealing \
-only {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} throws a bob-omb at {target} and {target} fails to block, dealing \
-{move:hpBlockF neg} damage!""",
-
-        'evadeChance': 35,
-        'evadeFailHPValue': Bound(-25, -40),
-        'evadeMessage': """\
-{sender} throws a bob-omb at {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} throws a bob-omb at {target} and {target} fails to evade it, dealing \
-{move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 15,
-        'criticalHPValue': Bound(-25, -40),
-        'blockFailCriticalHPValue': Bound(-25, -40),
-        'evadeFailCriticalHPValue': Bound(-30, -45),
-        'criticalMessage': """\
-{sender} throws a bob-omb at {target} and it explodes right next to them, \
-dealing {move:hpCrit neg} critical damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly throws a bob-omb at {target} and it explodes right \
-next to them, dealing {move:hpCrit neg} critical damage!""",
-        'blockFailCriticalMessage': """\
-{sender} throws a bob-omb right next to {target} and {target} fails to block, \
-dealing {move:hpBlockFCrit neg} critical damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} throws a bob-omb right next to {target} and {target} fails to evade, \
-dealing {move:hpEvadeFCrit neg} critical damage!""",
-
-        'failureChance': 6,
-        'failureHPValue': Bound(-15, -25),
-        'failureMessage': """\
-{sender} tries to throw a bob-omb at {target} but the bob-omb explodes next \
-to {sender}, dealing {move:hpF neg} damage!""",
-        }
-    ),
-    Move({
-        'name': 'Yeet',
-        'moveTypes': ([MTPhysical],),
-        'description': """Yeet your opponent.
-A high-damage attack that puts the target in severe hitstun, \
-but requires nearly all {st.ext_full} and {mp.ext_full} to execute.""",
-        'moveMessage': """\
-{sender} yeets {target}, dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-30, -49),
-        'stCost': Bound(-90, -100),
-        'mpCost': Bound(-90, -100),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Severe Hitstun',
-                'description': 'Stun from being yeeted.',
-
-                'target': 'target',
-                'chances': ((100, 'uncountered'),),
-                'duration': 2,
-
-                'receiveMessage': '{self} is in severe hitstun!',
-                'wearoffMessage': "{self}'s severe hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to severe hitstun!',
-                'noCounter': '{self} cannot counter due to severe hitstun!',
-            }),
-        ],
-
-        'speed': 10,
-        'fastMessage': """\
-{sender} quickly yeets {target}, dealing {move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': Bound(-25, -30),
-        'blockFailHPValue': Bound(-35, -49),
-        'blockMessage': """\
-{sender} tries to yeet {target} but {target} blocks, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{target} fails to block and {sender} yeets {target}, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 45,
-        'evadeFailHPValue': Bound(-40, -49),
-        'evadeMessage': """\
-{sender} tries to yeet {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{target} fails to evade {sender} and {sender} yeets {target}, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 5,
-        'criticalHPValue': Bound(-50, -60),
-        'blockFailCriticalHPValue': Bound(-50, -65),
-        'evadeFailCriticalHPValue': Bound(-55, -65),
-        'criticalMessage': """\
-A critical!
-{sender} SUPER yeets {target}, dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-A critical
-{sender} quickly SUPER yeets {target}, dealing {move:hp neg} damage!!""",
-        'blockFailCriticalMessage': """\
-A critical!
-{target} fails to block and {sender} SUPER yeets {target}, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-A critical!
-{target} fails to evade {sender} and {sender} SUPER yeets {target}, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 10,
-        'failureHPValue': Bound(-10, -15),
-        'failureMessage': """\
-{sender} tries to yeet {target} but fails, losing \
-{move:hpF neg} {hp.ext_full}.""",
-        }
-    ),
-
-    Move({
-        'name': 'Star Spit',
-        'moveTypes': ([MTKirby],),
-        'description': 'Spit your opponent as a star.',
-        'moveMessage': """\
-{sender} inhales {target} and spits them out as a star, dealing \
-{move:hp neg} damage!""",
-
-        'hpValue': Bound(-15, -20),
-        'stCost': Bound(-25, -30),
-        'mpCost': Bound(-10, -20),
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly inhales {target} and spits them out as a star, dealing \
-{move:hp neg} damage!""",
-
-        'blockChance': 30,
-        'blockFailHPValue': Bound(-15, -25),
-        'blockMessage': """\
-{sender} tries to inhale {target} but {target} blocks it!""",
-        'blockFailMessage': """\
-{target} tries to block but {sender} inhales them and spits {target} \
-out as a star, dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 20,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} tries to inhale {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{target} tries to evade but {sender} inhales them and spits {target} \
-out as a star, dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-30, -40),
-        'blockFailCriticalHPValue': Bound(-30, -40),
-        'evadeFailCriticalHPValue': Bound(-30, -45),
-        'criticalMessage': """\
-{sender} inhales {target} and spits them out as a star, dealing \
-{move:hpCrit neg} critical damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly inhales {target} and spits them out as a star, dealing \
-{move:hpCrit neg} critical damage!""",
-        'blockFailCriticalMessage': """\
-{target} tries to block but {sender} inhales them and spits {target} \
-out as a star, dealing {move:hpBlockFCrit neg} critical damage!""",
-        'evadeFailCriticalMessage': """\
-{target} tries to evade but {sender} inhales them and spits {target} \
-out as a star, dealing {move:hpEvadeFCrit neg} critical damage!""",
-
-        'failureChance': 9,
-        'failureMessage': """\
-{sender} tries to inhale {target} but {target} was not sucked in.""",
-        }
-    ),
-    Move({
-        'name': 'Dash',
-        'moveTypes': ([MTKirby],),
-        'description': 'Dash towards your opponent in a spiraling blaze.',
-        'moveMessage': """\
-{sender} dashes towards {target} in a firey blaze, dealing \
-{move:hp neg} damage and draining {move:st neg} {st.ext_full}!""",
-
-        'hpValue': Bound(-15, -20),
-        'stValue': Bound(-20, -30),
-        'stCost': Bound(-30, -40),
-        'mpCost': Bound(-30, -40),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Fire',
-                'description': "You're on fire!",
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'),),
-                'duration': 2,
-
-                'receiveMessage': '{self} is on fire!',
-                'applyMessage': '{self} took {-hpValue} damage from fire!',
-                'wearoffMessage': '{self} is no longer on fire.',
-
-                'hpValue': Bound(-4, -9),
-            }),
-        ],
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} rapidly dashes towards {target} in a firey blaze, dealing \
-{move:hp neg} damage and draining {move:st neg} {st.ext_full}!""",
-
-        'blockChance': 50,
-        'blockHPValue': Bound(-10, -15),
-        'blockSTValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-15, -25),
-        'blockFailSTValue': Bound(-20, -30),
-        'blockMessage': """\
-{sender} dashes towards {target} in a firey blaze but {target} blocks, \
-dealing only {move:hpBlock neg} damage and \
-{move:stBlock neg} {st.ext_full} drain!""",
-        'blockFailMessage': """\
-{sender} dashes towards {target} in a firey blaze and {target} \
-fails to block, dealing {move:hpBlockF neg} damage and \
-{move:stBlockF neg} {st.ext_full} drain!""",
-
-        'evadeChance': 30,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeFailSTValue': Bound(-25, -35),
-        'evadeMessage': """\
-{sender} dashes towards {target} in a blaze but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} dashes towards {target} in a blaze and {target} \
-fails to evade, dealing {move:hpEvadeF neg} damage and \
-{move:stEvadeF neg} {st.ext_full} drain!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-20, -30),
-        'criticalSTValue': Bound(-30, -40),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'blockFailCriticalSTValue': Bound(-30, -45),
-        'evadeFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalSTValue': Bound(-30, -45),
-        'criticalMessage': """\
-{sender} dashes towards {target} in a scorching-hot blaze, critically dealing \
-{move:hpCrit neg} damage and draining {move:stCrit neg} {st.ext_full}!""",
-        'fastCriticalMessage': """\
-{sender} quickly dashes towards {target} in a scorching-hot blaze, critically \
-dealing {move:hpCrit neg} damage and draining \
-{move:stCrit neg} {st.ext_full}!""",
-        'blockFailCriticalMessage': """\
-{sender} dashes towards {target} in a scorching-hot blaze and {target} \
-fails to block, critically dealing {move:hpBlockFCrit neg} damage and \
-{move:stBlockFCrit neg} {st.ext_full} drain!""",
-        'evadeFailCriticalMessage': """\
-{sender} dashes towards {target} in a scorching-hot blaze and {target} \
-fails to evade, critically dealing {move:hpEvadeFCrit neg} damage and \
-{move:stEvadeFCrit neg} {st.ext_full} drain!""",
-
-        'failureChance': 8,
-        'failureHPValue': Bound(-10, -15),
-        'failureMessage': """\
-{sender} tries to dash towards {target} but explodes into a ball of fire, \
-losing {move:hpF neg} {hp.ext_full}, {move:stC neg} {st.ext_full}, and \
-{move:mpC neg} {mp.ext_full}!""",
-        }
-    ),
-    Move({
-        'name': 'Hammer',
-        'moveTypes': ([MTKirby],),
-        'description': 'Charge up your hammer and smash down.',
-        'itemRequired': ([
-            {'name': 'Large Hammer'},
-            ],),
-        'moveMessage': """\
-{sender} charges up their hammer and slams it down on {target}, dealing \
-{move:hp neg} damage!""",
-
-        'hpValue': Bound(-30, -40),
-        'stCost': Bound(-61, -70),
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being hit by a hammer.',
-
-                'target': 'target',
-                'chances': ((20, 'uncountered'), (70, 'block'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 10,
-        'fastMessage': """\
-{sender} quickly charges up their hammer and slams it down on {target}, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 80,
-        'blockHPValue': Bound(-0, -10),
-        'blockSTValue': Bound(-45, -80),
-        'blockFailHPValue': Bound(-30, -35),
-        'blockFailSTValue': Bound(-10, -20),
-        'blockMessage': """\
-{sender} charges up their hammer and {target} blocks, slamming down for \
-{move:hpBlock neg} damage and {move:stBlock neg} {st.ext_full} drain!""",
-        'blockFailMessage': """\
-{sender} charges up their hammer and {target} fails to block, slamming down \
-for {move:hpBlockF neg} damage and {move:stBlockF neg} {st.ext_full} drain!""",
-
-        'evadeChance': 60,
-        'evadeFailHPValue': Bound(-30, -45),
-        'evadeFailSTValue': Bound(-10, -25),
-        'evadeMessage': """\
-{sender} charges up their hammer but {target} evades, making {sender} miss!""",
-        'evadeFailMessage': """\
-{sender} charges up their hammer and {target} fails to evade, slamming down \
-for {move:hpEvadeF neg} damage and {move:stEvadeF neg} {st.ext_full} drain!""",
-
-        'criticalChance': 5,
-        'criticalHPValue': Bound(-35, -45),
-        'blockFailCriticalHPValue': Bound(-35, -45),
-        'blockFailCriticalSTValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-35, -50),
-        'evadeFailCriticalSTValue': Bound(-20, -35),
-        'criticalMessage': """\
-{sender} charges up their hammer and SMASHES {target} with it, dealing \
-{move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} charges up their hammer and SMASHES {target} with it, dealing \
-{move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} charges up their hammer and SMASHES through {target}'s block, \
-dealing {move:hpBlockFCrit neg} damage and \
-{move:stBlockFCrit neg} {st.ext_full} drain!""",
-        'evadeFailCriticalMessage': """\
-{sender} charges up their hammer and {target} was too slow to evade, \
-SMASHING {target} for {move:hpEvadeFCrit neg} damage and \
-{move:stEvadeFCrit neg} {st.ext_full} drain!""",
-
-        'failureChance': 10,
-        'failureSTValue': Bound(40, 50),
-        'failureMessage': """\
-{sender} tries to charge their hammer but fails, losing \
-{-(int(move.fmt('stC')) + int(move.fmt('stF')))} {st.ext_full}!""",
-        }
-    ),
-    Move({
-        'name': 'Inhale',
-        'moveTypes': ([MTKirby],),
-        'description': 'Take a deep breath.',
-
-        'hpCost': Bound(1, 5),
-        'stCost': Bound(15, 30),
-
-        'speed': 100,
-        'fastMessage': """\
-{sender} takes a deep breath, regaining {move:hpC} {hp.ext_full} and \
-{move:stC} {st.ext_full}.""",
-
-        'blockChance': 0,
-        'evadeChance': 0,
-        'criticalChance': 0,
-
-        'failureChance': 6,
-        'failureSTValue': -14,
-        'failureMessage': """\
-{sender} tries to take a deep breath but only gains {move:hpC} {hp.ext_full} and \
-{int(move.fmt('stC')) + int(move.fmt('stF'))} {st.ext_full}.""",
-        }
-    ),
-    Move({
-        'name': 'Throw',
-        'moveTypes': ([MTKirby],),
-        'description': 'Throw your opponent.',
-        'moveMessage': """\
-{sender} throws {target} forwards for {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -15),
-        'stCost': Bound(-25, -35),
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} quickly throws {target} forwards for {move:hp neg} damage!""",
-
-        'blockChance': 30,
-        'blockFailHPValue': Bound(-12, -20),
-        'blockMessage': """\
-{sender} tries to throw {target} but {target} breaks free from \
-{sender}'s grip!""",
-        'blockFailMessage': """\
-{sender} tries to throw {target} and {target} fails to break free, \
-getting thrown for {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 55,
-        'evadeFailHPValue': Bound(-16, -21),
-        'evadeMessage': """\
-{sender} tries to throw {target} but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} tries to throw {target} and {target} fails to evade it, \
-getting thrown for {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 12,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-17, -30),
-        'evadeFailCriticalHPValue': Bound(-20, -30),
-        'criticalMessage': """\
-{sender} strongly throws {target} forwards for {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} strongly and quickly throws {target} forwards for \
-{move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{target} fails to break free from {sender}'s grab and gets \
-strongly thrown forwards for {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{target} fails to evade {sender}'s grab and gets strongly thrown forwards \
-for {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 8,
-        'failureMessage': """\
-{sender} tries to throw {target} but couldn't lift {target} up.""",
-        }
-    ),
-
-
-    Move({
-        'name': 'Kick',
-        'moveTypes': ([MTFootsies],),
-        'description': """An expert kick.
-Deals 50 damage for 70 {st.ext_full}.
-Significant bonus damage when it fails to be countered.""",
-        'moveMessage': """\
-{sender} kicks {target} for {move:hp neg} damage!""",
-
-        'hpValue': -50,
-        'stCost': -70,
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being kicked.',
-
-                'target': 'target',
-                'chances': ((30, 'uncountered'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-            StatusEffect({
-                'name': 'Blockstun',
-                'description': 'Stun from blocking a kick.',
-
-                'target': 'target',
-                'chances': ((10, 'blockSuccess'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in blockstun!',
-                'wearoffMessage': "{self}'s blockstun has worn off.",
-
-                'noMove': '{self} cannot move due to blockstun!',
-            }),
-        ],
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} swiftly kicks {target} for {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': -40,
-        'blockFailHPValue': -60,
-        'blockMessage': """\
-{target} blocks {sender}'s kick, taking {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{target} fails to block {sender}'s kick, taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': -90,
-        'evadeMessage': """\
-{target} dodges and {sender}'s kick whiffs!""",
-        'evadeFailMessage': """\
-{target} fails to evade {sender}'s kick, taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 0,
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} attempts to kick {target} but whiffs.""",
-        }
-    ),
-    Move({
-        'name': 'Strike',
-        'moveTypes': ([MTFootsies],),
-        'description': """A precise dominant arm strike.
-Deals 30 damage for 40 {st.ext_full}.
-Significant bonus damage when it fails to be countered.""",
-        'moveMessage': """\
-{sender} strikes {target} for {move:hp neg} damage!""",
-
-        'hpValue': -30,
-        'stCost': -40,
-
-        'effects': [
-            StatusEffect({
-                'name': 'Hitstun',
-                'description': 'Stun from being strongly punched.',
-
-                'target': 'target',
-                'chances': ((20, 'uncountered'),),
-                'duration': 1,
-
-                'receiveMessage': '{self} is in hitstun!',
-                'wearoffMessage': "{self}'s hitstun has worn off.",
-
-                'noMove': '{self} cannot move due to hitstun!',
-            }),
-        ],
-
-        'speed': 10,
-        'fastMessage': """\
-{sender} swiftly strikes {target} for {move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': -20,
-        'blockFailHPValue': -40,
-        'blockMessage': """\
-{target} blocks {sender}'s strike, taking {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{target} fails to block {sender}'s strike, taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': -60,
-        'evadeMessage': """\
-{target} dodges and {sender}'s strike whiffs!""",
-        'evadeFailMessage': """\
-{target} fails to evade {sender}'s strike, \
-taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 0,
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} attempts to strike {target} but whiffs.""",
-        }
-    ),
-    Move({
-        'name': 'Jab',
-        'moveTypes': ([MTFootsies],),
-        'description': """An expert punch.
-Deals 20 damage for 30 {st.ext_full}.
-Minor/Moderate bonus damage when it fails to be countered.""",
-        'moveMessage': """\
-{sender} jabs {target} for {move:hp neg} damage!""",
-
-        'hpValue': -20,
-        'stCost': -30,
-
-        'speed': 70,
-        'fastMessage': """\
-{sender} swiftly jabs {target} for {move:hp neg} damage!""",
-
-        'blockChance': 60,
-        'blockHPValue': -10,
-        'blockFailHPValue': -25,
-        'blockMessage': """\
-{target} blocks {sender}'s jab, taking {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{target} fails to block {sender}'s jab, taking {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': -40,
-        'evadeMessage': """\
-{target} dodges and {sender}'s jab whiffs!""",
-        'evadeFailMessage': """\
-{target} fails to evade {sender}'s jab, taking {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 0,
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} tries to jab {target} but whiffs.""",
-        }
-    ),
-    Move({
-        'name': 'Advance',
-        'moveTypes': ([MTFootsies],),
-        'description': """Close the gap.
-Gain 20 {st.ext_full}.""",
-
-        'stCost': 20,
-
-        'speed': 100,
-        'fastMessage': """\
-{sender} closes in on {target}, gaining {move:stC} {st.ext_full}.""",
-
-        'criticalChance': 0,
-
-        'failureChance': 0,
-        }
-    ),
-    Move({
-        'name': 'Retreat',
-        'moveTypes': ([MTFootsies],),
-        'description': """Close the gap.
-Decreases the opponent's {st.ext_full} by 10.""",
-
-        'stValue': -10,
-
-        'speed': 100,
-        'fastMessage': """\
-{sender} retreats and {target} loses {move:st neg} {st.ext_full}.""",
-
-        'criticalChance': 0,
-
-        'failureChance': 0,
-        }
-    ),
-    Move({
-        'name': 'Hold',
-        'moveTypes': ([MTFootsies],),
-        'description': """Maintain ground.
-Gain 10 {hp.ext_full}.""",
-
-        'hpCost': 10,
-
-        'speed': 100,
-        'fastMessage': """\
-{sender} holds, gaining {move:hpC} {hp.ext_full}.""",
-
-        'criticalChance': 0,
-
-        'failureChance': 0,
-        }
-    ),
-
-
-    Move({
-        'name': 'Test Main',
-        'moveTypes': ([MTTest],),
-        'description': '',
-        'skillRequired': ([SKAcrobatics(1)],),
-        'itemRequired': ([
-            {'name': 'Knife'},
-            ],),
-        'moveMessage': '\
-{sender} ran {move}, dealing {move:hp} HP, {move:st} ST, and {move:mp} MP \
-to {target}. It costed {sender} {move:hpC} HP, {move:stC} ST, \
-and {move:mpC} MP.',
-
-        'hpValue': Bound(-1, -5),
-        'stValue': Bound(-5),
-        'mpValue': Bound(-5),
-        'hpCost': Bound(-1, -5),
-        'stCost': -5,
-        'mpCost': Bound(-5),
-
-        'speed': 0,
-        'blockChance': 0,
-        'blockFailHPValue': Bound(-1, -5),
-        'blockFailSTValue': 1,
-        'blockFailMPValue': Bound(-1, -5),
-        'blockFailMessage': '\
-{sender} ran {move} and {target} failed to block, \
-taking {move:hpBlockF} HP, {move:stBlockF} ST, and {move:mpBlockF} MP.',
-        'evadeChance': 100,
-        'evadeMPValue': 10,
-        'evadeMessage': '\
-{sender} ran {move} and {target} evaded it, taking {move:mpEvade} .',
-        'criticalChance': 0,
-        'failureChance': 0,
-        }
-    ),
-    Move({
-        'name': 'Test Fast',
-        'moveTypes': ([MTTest],),
-        'description': '',
-        'moveMessage': '\
-ERROR: {move} WAS COUNTERABLE',
-
-        'hpValue': Bound(-1, -5),
-        'stValue': Bound(-5),
-        'mpValue': Bound(-5),
-        'hpCost': Bound(-1, -5),
-        'stCost': -5,
-        'mpCost': Bound(-5),
-
-        'speed': 100,
-        'fastMessage': '\
-{sender} ran {move}, dealing {move:hp} HP, {move:st} ST, and {move:mp} MP \
-to {target}. It costed {sender} {move:hpC} HP, {move:stC} ST, \
-and {move:mpC} MP.',
-
-        'blockChance': 0,
-        'evadeChance': 0,
-        'criticalChance': 0,
-        'failureChance': 0,
-        }
-    ),
-    Move({
-        'name': 'Test Fail',
-        'moveTypes': ([MTTest],),
-        'description': '',
-
-        'speed': 0,
-        'blockChance': 0,
-        'evadeChance': 0,
-        'criticalChance': 0,
-
-        'failureChance': 100,
-        'failureHPValue': Bound(-5, -10),
-        'failureSTValue': Bound(-5, -10),
-        'failureMPValue': Bound(-5, -10),
-        'failureMessage': '\
-{sender} ran {move} and took {move:hpF} HP, {move:stF} ST, \
-and {move:mpF} MP.',
-        }
-    ),
-    Move({
-        'name': 'Test Critical',
-        'moveTypes': ([MTTest],),
-        'description': '',
-
-        'speed': 20,
-
-        'blockChance': 50,
-        'blockMessage': '\
-{sender} used {move} and {target} blocked it.',
-
-        'evadeChance': 50,
-        'evadeMessage': '\
-{sender} used {move} and {target} evaded it.',
-
-        'criticalChance': 100,
-        'criticalHPValue': -11,
-        'criticalSTValue': -11,
-        'criticalMPValue': -11,
-        'blockFailCriticalHPValue': Bound(-1, -5),
-        'blockFailCriticalSTValue': Bound(-1, -5),
-        'blockFailCriticalMPValue': Bound(-1, -5),
-        'evadeFailCriticalHPValue': Bound(-6, -10),
-        'evadeFailCriticalSTValue': Bound(-6, -10),
-        'evadeFailCriticalMPValue': Bound(-6, -10),
-        'criticalMessage': '\
-{sender} ran {move} and got a critical after no counter, dealing \
-{move:hpCrit} HP, {move:stCrit} ST, and {move:mpCrit} MP to {target}.',
-        'fastCriticalMessage': '\
-{sender} ran {move} and got a fast critical, dealing \
-{move:hpCrit} HP, {move:stCrit} ST, and {move:mpCrit} MP to {target}.',
-        'blockFailCriticalMessage': '\
-{sender} ran {move} and got a critical after a failed block, dealing \
-{move:hpBlockFCrit} HP, {move:stBlockFCrit} ST, \
-and {move:mpBlockFCrit} MP to {target}.',
-        'evadeFailCriticalMessage': '\
-{sender} ran {move} and got a critical after a failed evade, dealing \
-{move:hpEvadeFCrit} HP, {move:stEvadeFCrit} ST, \
-and {move:mpEvadeFCrit} MP to {target}.',
-
-        'failureChance': 0,
-        }
-    ),
-
-
-    Move({
-        'name': 'ATLA Move Template',
-        'moveTypes': ([MTBender],),
-        'description': '',
-        'skillRequired': ([SKAirBending(1)],),
-        'itemRequired': ([
-            {
-                'name': '',
-                'count': 0
-            },
-            ],),
-        'moveMessage': """\
-{move:hp neg}, {move:stC neg}""",
-
-        'hpValue': Bound(-0, -0),
-        'stValue': Bound(-0, -0),
-        'mpValue': Bound(-0, -0),
-        'hpCost': Bound(-0, -0),
-        'stCost': Bound(-0, -0),
-        'mpCost': Bound(-0, -0),
-
-        'speed': 0,
-        'fastMessage': """\
-{move:hp neg}""",
-
-        'blockChance': 0,
-        'blockHPValue': Bound(-0, -0),
-        'blockSTValue': Bound(-0, -0),
-        'blockMPValue': Bound(-0, -0),
-        'blockFailHPValue': Bound(-0, -0),
-        'blockFailSTValue': Bound(-0, -0),
-        'blockFailMPValue': Bound(-0, -0),
-        'blockMessage': """\
-{move:hpBlock neg}""",
-        'blockFailMessage': """\
-{move:hpBlockF neg}""",
-
-        'evadeChance': 0,
-        'evadeHPValue': 0,
-        'evadeSTValue': 0,
-        'evadeMPValue': 0,
-        'evadeFailHPValue': Bound(-0, -0),
-        'evadeFailSTValue': Bound(-0, -0),
-        'evadeFailMPValue': Bound(-0, -0),
-        'evadeMessage': """\
-{move:hpEvade neg}""",
-        'evadeFailMessage': """\
-{move:hpEvadeF neg}""",
-
-        'criticalChance': 0,
-        'criticalHPValue': Bound(-0, -0),
-        'criticalSTValue': Bound(-0, -0),
-        'criticalMPValue': Bound(-0, -0),
-        'blockFailCriticalHPValue': Bound(-0, -0),
-        'blockFailCriticalSTValue': Bound(-0, -0),
-        'blockFailCriticalMPValue': Bound(-0, -0),
-        'evadeFailCriticalHPValue': Bound(-0, -0),
-        'evadeFailCriticalSTValue': Bound(-0, -0),
-        'evadeFailCriticalMPValue': Bound(-0, -0),
-        'criticalMessage': """\
-{move:hpCrit neg}""",
-        'fastCriticalMessage': """\
-{move:hpCrit neg}""",
-        'blockFailCriticalMessage': """\
-{move:hpBlockFCrit neg}""",
-        'evadeFailCriticalMessage': """\
-{move:hpEvadeFCrit neg}""",
-
-        'failureChance': 0,
-        'failureHPValue': Bound(-0, -0),
-        'failureSTValue': Bound(-0, -0),
-        'failureMPValue': Bound(-0, -0),
-        'failureMessage': """\
-{move:hpF neg}""",
-        }
-    ),
-    Move({
-        'name': 'Tidal Wave',
-        'moveTypes': ([MTBender],),
-        'description': 'Summon a tidal wave.',
-        'skillRequired': ([SKWaterBending(1)],),
-        'moveMessage': """\
-{sender} summons a tidal wave against {target}, \
-dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -15),
-        'stCost': Bound(-20, -30),
-        'mpCost': Bound(-10, -20),
-
-        'speed': 40,
-        'fastMessage': """\
-{sender} quickly summons a tidal wave against {target}, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-5, -15),
-        'blockFailHPValue': Bound(-10, -20),
-        'blockMessage': """\
-{sender} summons a tidal wave and {target} blocks it, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} summons a tidal wave and {target} fails to block it, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 40,
-        'evadeFailHPValue': Bound(-20, -25),
-        'evadeMessage': """\
-{sender} summons a tidal wave but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} summons a tidal wave and {target} fails to block it, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-16, -25),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-30, -35),
-        'criticalMessage': """\
-{sender} summons a SUPER tidal wave against {target}, \
-dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly summons a SUPER tidal wave against {target}, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} summons a SUPER tidal wave and {target} fails to block it, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} summons a SUPER tidal wave and {target} fails to evade it, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} fails to create a tidal wave towards {target}.""",
-        }
-    ),
-    Move({
-        'name': 'Ice Shards',
-        'moveTypes': ([MTBender],),
-        'description': 'Send a flurry of ice shards.',
-        'skillRequired': ([SKWaterBending(1)],),
-        'moveMessage': """\
-{sender} shoots a flurry of ice shards at {target}, \
-dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'stCost': Bound(-25, -35),
-        'mpCost': Bound(-15, -20),
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly shoots a flurry of ice shards at {target}, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-15, -30),
-        'blockMessage': """\
-{sender} shoots a flurry of ice shards and {target} blocks, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} shoots a flurry of ice shards and {target} fails to block, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 30,
-        'evadeSTValue': Bound(-5, -15),
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} shoots a flurry of ice shards but {target} evades them \
-for {move:stEvade neg} {st.ext_full}!""",
-        'evadeFailMessage': """\
-{sender} shoots a flurry of ice shards and {target} fails to evade, \
-dealing {move:hp neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-25, -35),
-        'criticalMessage': """\
-{sender} shoots a MASSIVE flurry of ice shards, \
-dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly shoots a MASSIVE flurry of ice shards, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} shoots a MASSIVE flurry of ice shards and {target} fails to block, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} shoots a MASSIVE flurry of ice shards and {target} fails to evade, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} tries to shoot a flurry of ice shards but fails.""",
-        }
-    ),
-
-    Move({
-        'name': 'Pillar Strike',
-        'moveTypes': ([MTBender],),
-        'description': 'Send a column of rock at your opponent.',
-        'skillRequired': ([SKEarthBending(1)],),
-        'moveMessage': """\
-{sender} strikes {target} with a column of rock, \
-dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'stCost': Bound(-25, -35),
-        'mpCost': Bound(-15, -20),
-
-        'speed': 15,
-        'fastMessage': """\
-{sender} quickly strikes {target} with a column of rock, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-15, -30),
-        'blockMessage': """\
-{sender} sends a column of rock and {target} blocks, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} sends a column of rock and {target} fails to block, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 30,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} sends a column of rock but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} sends a column of rock and {target} fails to evade, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-25, -35),
-        'criticalMessage': """\
-{sender} quickly strikes {target} with a LARGE column of rock, \
-dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly strikes {target} with a LARGE column of rock, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} sends a LARGE column of rock and {target} fails to block, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} sends a LARGE column of rock and {target} fails to evade, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} tries to send a column of rock but fails.""",
-        }
-    ),
-
-    Move({
-        'name': 'Fire Blast',
-        'moveTypes': ([MTBender],),
-        'description': 'Throw a howitzer of flame.',
-        'skillRequired': ([SKFireBending(1)],),
-        'moveMessage': """\
-{sender} blasts {target} with a meteor of flame, \
-dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'stCost': Bound(-25, -35),
-        'mpCost': Bound(-15, -20),
-
-        'speed': 15,
-        'fastMessage': """\
-{sender} quickly blasts {target} with a meteor of flame, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-15, -30),
-        'blockMessage': """\
-{sender} shoots a meteor of flame and {target} blocks it, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} shoots a meteor of flame and {target} fails to block it, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 30,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} shoots a meteor of flame but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} shoots a meteor of flame and {target} fails to evade it, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-25, -35),
-        'criticalMessage': """\
-{sender} blasts {target} with a Sozin's Comet of flame, \
-dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly blasts {target} with a Sozin's Comet of flame, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} shoots a Sozin's Comet of flame and {target} fails to block it, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} shoots a Sozin's Comet of flame and {target} fails to evade it, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} tries to shoot a meteor of flame but fails.""",
-        }
-    ),
-
-    Move({
-        'name': 'Air Blast',
-        'moveTypes': ([MTBender],),
-        'description': 'Expel a blast of air.',
-        'skillRequired': ([SKAirBending(1)],),
-        'moveMessage': """\
-{sender} blasts {target} back with a burst of air, \
-dealing {move:hp neg} damage!""",
-
-        'hpValue': Bound(-10, -20),
-        'stCost': Bound(-25, -35),
-        'mpCost': Bound(-15, -20),
-
-        'speed': 30,
-        'fastMessage': """\
-{sender} quickly blasts {target} back with a burst of air, \
-dealing {move:hp neg} damage!""",
-
-        'blockChance': 70,
-        'blockHPValue': Bound(-15, -25),
-        'blockFailHPValue': Bound(-15, -30),
-        'blockMessage': """\
-{sender} blasts a burst of air at {target} who is blocking, \
-dealing {move:hpBlock neg} damage!""",
-        'blockFailMessage': """\
-{sender} blasts a burst of air and {target} fails to block it, \
-dealing {move:hpBlockF neg} damage!""",
-
-        'evadeChance': 30,
-        'evadeFailHPValue': Bound(-20, -30),
-        'evadeMessage': """\
-{sender} blasts a burst of air but {target} evades it!""",
-        'evadeFailMessage': """\
-{sender} blasts a burst of air and {target} fails to evade it, \
-dealing {move:hpEvadeF neg} damage!""",
-
-        'criticalChance': 10,
-        'criticalHPValue': Bound(-15, -25),
-        'blockFailCriticalHPValue': Bound(-20, -30),
-        'evadeFailCriticalHPValue': Bound(-25, -35),
-        'criticalMessage': """\
-{sender} blasts {target} back with an EXPLOSION of air, \
-dealing {move:hpCrit neg} damage!""",
-        'fastCriticalMessage': """\
-{sender} quickly blasts {target} back with an EXPLOSION of air, \
-dealing {move:hpCrit neg} damage!""",
-        'blockFailCriticalMessage': """\
-{sender} blasts an EXPLOSION of air and {target} fails to block, \
-dealing {move:hpBlockFCrit neg} damage!""",
-        'evadeFailCriticalMessage': """\
-{sender} blasts an EXPLOSION of air and {target} fails to evade it, \
-dealing {move:hpEvadeFCrit neg} damage!""",
-
-        'failureChance': 5,
-        'failureMessage': """\
-{sender} tries to fire a blast of air at {target} but fails.""",
-        }
-    ),
-]
 
 
 class BattleEnvironment:
@@ -6074,18 +3397,18 @@ class BattleEnvironment:
         'mpMax': 100,                                  # 100
         'mpRate': 10,                                  # 10
         'status_effects': [],
-        # [SKAcrobatics(1), SKKnifeHandling(2), SKBowHandling(1)]
+        # [Skill('Acrobatics', 1), Skill('Knife Handling', 2), Skill('Bow Handling', 1)]
         'skills': [
-            SKAcrobatics(1),
-            SKKnifeHandling(2),
-            SKBowHandling(1),
+            Skill('Acrobatics', 1),
+            Skill('Knife Handling', 2),
+            Skill('Bow Handling', 1),
         ],
-        # [MTPhysical, MTMagical]
+        # [MoveType('Physical'), MoveType('Magical')]
         'moveTypes': [
-            MTPhysical,
-            MTMagical,
+            MoveType('Physical'),
+            MoveType('Magical'),
         ],
-        'moves': moveList,                             # moveList
+        'moves': [],
         'AI': FighterAIGeneric,                        # FighterAIGeneric
         'inventory': [
             Item({
@@ -6139,7 +3462,7 @@ class BattleEnvironment:
         ],
     }
     DEFAULT_PLAYER_SETTINGS_A = {
-        # 'moveTypes': [MTKirby],
+        # 'moveTypes': [MoveType('Kirby')],
         # 'AI': FighterAISwordFirst,
     }
     DEFAULT_PLAYER_SETTINGS_B = {
@@ -6360,7 +3683,7 @@ else:
             if B and 'randomize_moves_B' in self.data:
                 del self.data['randomize_moves_B']
 
-        def filter_moves_by_moveTypes(moves, moveTypes):
+        def filter_moves_by_move_types(moves, moveTypes):
             return [
                 m for m in moves
                 if 'moveTypes' in m
@@ -6380,7 +3703,7 @@ else:
                 SKEarthBending, SKWaterBending, SKFireBending, SKAirBending
             ]
 
-            self.default_player_settings['moveTypes'] = [MTBender]
+            self.default_player_settings['moveTypes'] = [MoveType('Bender')]
 
             del self.default_player_settings['inventory']
 
@@ -6395,7 +3718,7 @@ else:
             self.default_player_settings_B['skills'] = [playerB_bending]
         elif self.gamemode == 'be kirby':
             self.default_player_settings_A['name'] = 'Kirby'
-            self.default_player_settings_A['moveTypes'] = [MTKirby]
+            self.default_player_settings_A['moveTypes'] = [MoveType('Kirby')]
 
             stop_randomization_of_moves()
         elif self.gamemode == 'footsies':
@@ -6403,9 +3726,9 @@ else:
             self.default_player_settings['st'] = 0
             self.default_player_settings['stRate'] = 0
             self.default_player_settings['mpMax'] = 0
-            moveTypes = [MTFootsies]
+            moveTypes = [MoveType('Footsies')]
             self.default_player_settings['moveTypes'] = moveTypes
-            self.default_player_settings['moves'] = filter_moves_by_move_type(
+            self.default_player_settings['moves'] = filter_moves_by_move_types(
                 self.default_player_settings['moves'], moveTypes
             )
 
@@ -6415,7 +3738,7 @@ else:
             self.stats_to_show = ('hp', 'st')
         elif self.gamemode == 'fight kirby':
             self.default_player_settings_B['name'] = 'Kirby'
-            self.default_player_settings_B['moveTypes'] = [MTKirby]
+            self.default_player_settings_B['moveTypes'] = [MoveType('Kirby')]
         elif self.gamemode == 'hard':
             self.base_values_multiplier_percent = 200
             self.base_energies_cost_multiplier_percent = 200
@@ -6919,28 +4242,36 @@ else:
         firstPlayerPrompt, secondPlayerPrompt = None, None
         autoplay = False
 
-        prompt_boolean = PromptBoolean(input_func=input_color)
-        input_advanced = InputAdvanced(input_func=input_color)
-        firstPlayerPrompt = prompt_boolean(
-            'Is there a player-controlled fighter? {FLcyan}',
-            false=('no', 'n'))
+        # Define input functions
+        def input_name_func(*args, **kwargs):
+            """Modified input_color function that strips whitespace."""
+            return input_color(*args, **kwargs).strip()
+
+        input_boolean_color = functools.partial(
+            input_boolean,
+            repeat_message='Answer with {true} or {false}: {FLcyan}',
+            false=('no', 'n'),
+            input_func=input_color
+        )
+        input_name = functools.partial(
+            input_loop_if_equals,
+            repeat_message='Name cannot be empty: {FLcyan}',
+            loop_if_equals=(''),
+            input_func=input_name_func
+        )
+
+        # Get player options
+        firstPlayerPrompt = input_boolean_color(
+            'Is there a player-controlled fighter? {FLcyan}')
         if firstPlayerPrompt:
-            firstPlayer = input_advanced(
-                'Choose your name: {FLcyan}',
-                loopPrompt='Name cannot be empty: {FLcyan}',
-                breakString=None)
-            secondPlayerPrompt = prompt_boolean(
-                'Is there a second player? {FLcyan}',
-                false=('no', 'n'))
+            firstPlayer = input_name('Choose your name: {FLcyan}')
+            secondPlayerPrompt = input_boolean_color(
+                'Is there a second player? {FLcyan}')
             if secondPlayerPrompt:
-                secondPlayer = input_advanced(
-                    'Choose your name: {FLcyan}',
-                    loopPrompt='Name cannot be empty: {FLcyan}',
-                    breakString=None)
+                secondPlayer = input_name('Choose your name: {FLcyan}')
         if not (firstPlayerPrompt and secondPlayerPrompt):
-            autoplay = prompt_boolean(
-                'Automatically play AI turns? {FLcyan}',
-                false=('no', 'n'))
+            autoplay = input_boolean_color(
+                'Automatically play AI turns? {FLcyan}')
 
         return firstPlayer, secondPlayer, autoplay
 
@@ -7116,6 +4447,10 @@ def main():
         # starting the battle.
         # Disable by removing this key.
     }
+
+    logger.debug('Reading src/engine/data/moves.json')
+    moveList = json_handler.load(
+        'src/engine/data/moves.json', encoding='utf-8')
 
     try:
         startup_procedures()

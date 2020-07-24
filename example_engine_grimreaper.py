@@ -1,10 +1,15 @@
 import time
 
-from src.engine import dueturn  # Battle Engine
 from src import textio
+from src.engine import dueturn  # Battle Engine
+from src.engine import util as dueturn_util
 
 
 def main():
+    # Load list of moves
+    moveList = dueturn.json_handler.load(
+        'src/engine/data/moves.json', encoding='utf-8')
+
     player_fighter = dueturn.Fighter(
         battle_env=None,  # Set this when its needed
         name='{Fgreen}Ned{RA}',
@@ -12,12 +17,12 @@ def main():
         hp=300, hpMax=300, hpRate=10,
         st=200, stMax=200, stRate=10,
         mp=200, mpMax=200, mpRate=10,
-        skills=[dueturn.SKAcrobatics(1),
-                dueturn.SKKnifeHandling(2),
-                dueturn.SKBowHandling(1)],
-        moveTypes=[dueturn.MTPhysical, dueturn.MTMagical],
+        skills=[dueturn.Skill('Acrobatics', 1),
+                dueturn.Skill('Knife Handling', 2),
+                dueturn.Skill('Bow Handling', 1)],
+        moveTypes=[dueturn.MoveType('Physical'), dueturn.MoveType('Magical')],
         # Use moves provided by game engine in sorted order
-        moves=sorted(dueturn.moveList, key=lambda x: x['name']),
+        moves=sorted(moveList, key=lambda x: x['name']),
         counters = dueturn.Fighter.allCounters.copy(),  # Give all counters
         inventory=dueturn.list_copy(
             dueturn.BattleEnvironment.DEFAULT_PLAYER_SETTINGS['inventory']
@@ -31,7 +36,7 @@ def main():
         dueturn.noneMove,
         dueturn.Move({
             'name': 'Grim Strike',
-            'moveTypes': ([dueturn.MTPhysical],),
+            'moveTypes': ([dueturn.MoveType('Physical')],),
             'description': 'A downwards strike with the Scythe.',
             'moveMessage': """\
     {sender}{FLred} strikes down {target}{FLred} with the Scythe \
@@ -61,7 +66,7 @@ def main():
         hp=432000, hpMax=450000, hpRate=50,
         st=42000, stMax=42000, stRate=814,
         mp=96000, mpMax=96000, mpRate=312,
-        moveTypes=[dueturn.MTPhysical],
+        moveTypes=[dueturn.MoveType('Physical')],
         moves=boss_moves,
         counters = dueturn.Fighter.allCounters.copy(),
         AI=dueturn.FighterAIGeneric(),
@@ -72,8 +77,9 @@ def main():
     # dueturn.GAME_DISPLAY_USE_TABS = True  # Display constants can be changed
 
 
-    if dueturn.PromptBoolean()('Do you want to fight the final boss? ',
-                         false=('no', 'n')):
+    if dueturn_util.input_boolean(
+            'Do you want to fight the final boss? ',
+            false=('no', 'n')):
         # Turn default color to red
         textio.update_colorama_reset('{Snorma}{Fred}{Bblack}', auto_reset=True)
         dueturn.print_color(

@@ -1,9 +1,12 @@
 import sys
 import time
 import traceback
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
 from src import logs
+from src.textio import (
+    ColoramaCodes, cr, format_color, input_color, print_color
+)
 
 logger = logs.get_logger()
 
@@ -86,6 +89,68 @@ def exception_message(
     return msg
 
 
+def input_loop_if_equals(
+        message=None, repeat_message=None,
+        loop_if_equals=None, break_string=None,
+        input_func=input):
+    """Prompt the user for a string and loop if it matches a set of strings.
+
+    Example:
+        >>> input_loop_if_equals(
+        ...     message='Type your name:',
+        ...     repeat_message='That name is already taken! ',
+        ...     loop_if_equals=('foo', 'bar'),
+        ...     break_string='exit'
+        ... )
+        Type your name:
+
+    Args:
+        message (str): The message to prompt.
+        repeat_message (str): The message to prompt when the user
+            provides an answer matching `loop_if_equals`.
+        loop_if_equals (Optional[Set[str]]): If provided,
+            loops the prompt using `repeat_message` when the user
+            types an answer in `loop_if_equals`.
+        break_string (Optional[str]): If provided, returns None
+            when the user types an answer equal to this.
+        input_func: The function to use when input is needed.
+            Defaults to input().
+
+    """
+    def parse(ans):
+        if ans == break_string:
+            return None
+        elif ans in loop_if_equals:
+            return True
+        return ans
+
+    if repeat_message is None:
+        repeat_message = message
+
+    ans = input_func(message)
+
+    while (meaning := parse(ans)) is True:
+        ans = input_func(repeat_message)
+
+    return ans
+
+
+def num(x) -> Union[int, float, complex]:
+    """Convert an object into either a int, float, or complex in that order."""
+    try:
+        if hasattr(x, 'is_integer') and not x.is_integer():
+            raise ValueError
+        return int(x)
+    except Exception:
+        try:
+            return float(x)
+        except Exception:
+            n = complex(x)
+            if n.imag == 0:
+                return num(n.real)
+            return complex(num(n.real), num(n.imag))
+
+
 def pause(sleep=None, printNewline=0):
     """When not given a number, will block current thread with input().
     Otherwise, will use time.sleep() for the specified time.
@@ -129,6 +194,90 @@ def plural(n, pluralString='s', naturalOnly=False):
     elif abs(n) == 1:
         return ''
     return pluralString
+
+
+def input_boolean(
+        message, repeat_message=None,
+        true=('yes', 'y'), false=('no', 'n'),
+        show_option_count=-1,
+        input_func=input):
+    """Prompt the user for a boolean answer.
+
+    When prompting, input is lowered and stripped regardless of `input_func`.
+
+    Example:
+        >>> input_boolean(
+        ...     message='Type {true} to confirm:',
+        ...     repeat_message='Unknown answer: ',
+        ...     true=('yes','y'),
+        ...     false=('no', 'n'),
+        ...     show_option_count=2
+        ... )
+        Type (yes/y) to confirm:
+
+    Args:
+        message (str): The message to prompt.
+        repeat_message (str): The message to prompt when the user gives
+            an invalid input.
+        true (Sequence[str]): A sequence of allowed answers for True.
+        false (Optional[Sequence[str]]): A sequence of allowed answers
+            for False. Can be set to None to return False if the user
+            does not type anything matching `true`.
+        show_option_count (int):
+            If greater than 0,
+            substitutes {true} and {false} within `message` and
+            `repeat_message` to show the allowed answers for True and False,
+            up to `show_option_count`.
+            If less than 0, does the same as above except it shows all options.
+            If exactly 0, {true} and {false} are not substituted.
+        input_func: The function to use when input is needed.
+            Defaults to input().
+
+    """
+    def parse(ans):
+        if ans in true:
+            return True
+        elif false is None:
+            return False
+        elif ans in false:
+            return False
+        return None
+
+    if show_option_count != 0:
+        if show_option_count > 0:
+            true_str = '({})'.format('/'.join(true[:show_option_count]))
+            false_str = '({})'.format('/'.join(false[:show_option_count])) \
+                        if false is not None else ''
+        else:
+            true_str = f"({'/'.join(true)})"
+            false_str = f"({'/'.join(false)})" \
+                        if false is not None else ''
+        # Format colors and true/false options
+        message = format_color(
+            message,
+            namespace={'true': true_str, 'false': false_str}
+        )
+        if repeat_message is None:
+            repeat_message = message
+        else:
+            repeat_message = format_color(
+                repeat_message,
+                namespace={'true': true_str, 'false': false_str}
+            )
+    else:
+        message = format_color(message)
+        if repeat_message is None:
+            repeat_message = message
+        else:
+            repeat_message = format_color(repeat_message)
+    
+    # Get input
+    ans = input_func(message).lower().strip()
+
+    while (meaning := parse(ans)) is None:
+        ans = input_func(repeat_message).lower().strip()
+    
+    return meaning
 
 
 def list_copy(items: Iterable) -> List:
