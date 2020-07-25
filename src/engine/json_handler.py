@@ -79,7 +79,7 @@ def object_hook(literal):
     def from_JSON_literal(literal):
         type_ = literal.get('__type__')
         if type_ is not None:
-            cls = objects.get(type_])
+            cls = objects.get(type_)
             if cls is None:
                 raise TypeError(f'Unknown __type__ value {type_!r}')
 

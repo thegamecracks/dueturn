@@ -1,5 +1,8 @@
 
+.venv/
 config/engine.json
 config/interface.json
 *.log
 *.pyc
+run_venv.bat
+desktop.ini
