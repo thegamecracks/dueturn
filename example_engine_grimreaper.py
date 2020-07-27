@@ -1,8 +1,8 @@
 import time
 
 from src import textio
-from src.engine import dueturn  # Battle Engine
-from src.engine import util as dueturn_util
+from src import engine as dueturn
+from src.engine import fighter_ai
 
 
 def main():
@@ -10,25 +10,27 @@ def main():
     moveList = dueturn.json_handler.load(
         'src/engine/data/moves.json', encoding='utf-8')
 
+    player_stats = dueturn.fighter_stats.create_default_stats(
+        hp=(300, 300, 10),
+        st=(200, 200, 10),
+        mp=(200, 200, 10)
+    )
     player_fighter = dueturn.Fighter(
-        battle_env=None,  # Set this when its needed
         name='{Fgreen}Ned{RA}',
-        # Stats
-        hp=300, hpMax=300, hpRate=10,
-        st=200, stMax=200, stRate=10,
-        mp=200, mpMax=200, mpRate=10,
+        battle_env=None,  # Set this when its needed
+        stats=player_stats,
         skills=[dueturn.Skill('Acrobatics', 1),
                 dueturn.Skill('Knife Handling', 2),
                 dueturn.Skill('Bow Handling', 1)],
         moveTypes=[dueturn.MoveType('Physical'), dueturn.MoveType('Magical')],
         # Use moves provided by game engine in sorted order
         moves=sorted(moveList, key=lambda x: x['name']),
-        counters = dueturn.Fighter.allCounters.copy(),  # Give all counters
-        inventory=dueturn.list_copy(
+        counters=dueturn.Fighter.allCounters.copy(),  # Give all counters
+        inventory=dueturn.util.list_copy(
             dueturn.BattleEnvironment.DEFAULT_PLAYER_SETTINGS['inventory']
         ),  # Copies the inventory from the BattleEnvironment's constants
         isPlayer=True,  # Gives control to user when required
-        AI=None,  # An error will only occur if it tries using an AI
+        AI=None,  # The AI is only needed when isPlayer is False
         battleShellDict=None  # Auto-generates data for the battle interface
     )
 
@@ -59,25 +61,23 @@ def main():
             }
         )
     ]
+    boss_stats = dueturn.fighter_stats.create_default_stats(
+        hp=(432000, 450000, 50),
+        st=(42000, 42000, 814),
+        mp=(96000, 96000, 312)
+    )
     boss = dueturn.Fighter(
         battle_env=None,  # Set this when its needed
         name='{FLred}The Grim Reaper{RA}',
-        # Stats
-        hp=432000, hpMax=450000, hpRate=50,
-        st=42000, stMax=42000, stRate=814,
-        mp=96000, mpMax=96000, mpRate=312,
+        stats=boss_stats,
         moveTypes=[dueturn.MoveType('Physical')],
         moves=boss_moves,
-        counters = dueturn.Fighter.allCounters.copy(),
-        AI=dueturn.FighterAIGeneric(),
+        counters=dueturn.Fighter.allCounters.copy(),
+        AI=fighter_ai.FighterAIGeneric(),
         battleShellDict=False
     )
 
-
-    # dueturn.GAME_DISPLAY_USE_TABS = True  # Display constants can be changed
-
-
-    if dueturn_util.input_boolean(
+    if dueturn.util.input_boolean(
             'Do you want to fight the final boss? ',
             false=('no', 'n')):
         # Turn default color to red
@@ -98,10 +98,10 @@ def main():
             time.sleep(1.5)
             if player_fighter.hp > 0:
                 dueturn.print_color('{FLgree}You have lost- wait you won ',
-                               end=dueturn.ColoramaCodes.RESET_ALL)
+                                    end=dueturn.ColoramaCodes.RESET_ALL)
             else:
                 dueturn.print_color('{FLred}You have lost. ',
-                               end=dueturn.ColoramaCodes.RESET_ALL)
+                                    end=dueturn.ColoramaCodes.RESET_ALL)
             input()
     else:
         print(f"{player_fighter}: Yeah I ain't fighting that")

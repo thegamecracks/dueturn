@@ -1,0 +1,445 @@
+[
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Star Spit",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Kirby"
+                    }
+                ]
+            ],
+            "description": "Spit your opponent as a star.",
+            "moveMessage": "{sender} inhales {target} and spits them out as a star, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -30
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "speed": 30,
+            "fastMessage": "{sender} quickly inhales {target} and spits them out as a star, dealing {move:hp neg} damage!",
+            "blockChance": 30,
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockMessage": "{sender} tries to inhale {target} but {target} blocks it!",
+            "blockFailMessage": "{target} tries to block but {sender} inhales them and spits {target} out as a star, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 20,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeMessage": "{sender} tries to inhale {target} but {target} evades it!",
+            "evadeFailMessage": "{target} tries to evade but {sender} inhales them and spits {target} out as a star, dealing {move:hpEvadeF neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -45
+            },
+            "criticalMessage": "{sender} inhales {target} and spits them out as a star, dealing {move:hpCrit neg} critical damage!",
+            "fastCriticalMessage": "{sender} quickly inhales {target} and spits them out as a star, dealing {move:hpCrit neg} critical damage!",
+            "blockFailCriticalMessage": "{target} tries to block but {sender} inhales them and spits {target} out as a star, dealing {move:hpBlockFCrit neg} critical damage!",
+            "evadeFailCriticalMessage": "{target} tries to evade but {sender} inhales them and spits {target} out as a star, dealing {move:hpEvadeFCrit neg} critical damage!",
+            "failureChance": 9,
+            "failureMessage": "{sender} tries to inhale {target} but {target} was not sucked in."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Dash",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Kirby"
+                    }
+                ]
+            ],
+            "description": "Dash towards your opponent in a spiraling blaze.",
+            "moveMessage": "{sender} dashes towards {target} in a firey blaze, dealing {move:hp neg} damage and draining {move:st neg} {st.ext_full}!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "stValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "effects": [
+                {
+                    "__type__": "StatusEffect",
+                    "values": {
+                        "name": "Fire",
+                        "description": "You're on fire!",
+                        "target": "target",
+                        "chances": [
+                            [
+                                30,
+                                "uncountered"
+                            ]
+                        ],
+                        "duration": 2,
+                        "receiveMessage": "{self} is on fire!",
+                        "applyMessage": "{self} took {-hpValue} damage from fire!",
+                        "wearoffMessage": "{self} is no longer on fire.",
+                        "hpValue": {
+                            "__type__": "Bound",
+                            "left": -4,
+                            "right": -9
+                        }
+                    }
+                }
+            ],
+            "speed": 40,
+            "fastMessage": "{sender} rapidly dashes towards {target} in a firey blaze, dealing {move:hp neg} damage and draining {move:st neg} {st.ext_full}!",
+            "blockChance": 50,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -15
+            },
+            "blockSTValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailSTValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "blockMessage": "{sender} dashes towards {target} in a firey blaze but {target} blocks, dealing only {move:hpBlock neg} damage and {move:stBlock neg} {st.ext_full} drain!",
+            "blockFailMessage": "{sender} dashes towards {target} in a firey blaze and {target} fails to block, dealing {move:hpBlockF neg} damage and {move:stBlockF neg} {st.ext_full} drain!",
+            "evadeChance": 30,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailSTValue": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "evadeMessage": "{sender} dashes towards {target} in a blaze but {target} evades it!",
+            "evadeFailMessage": "{sender} dashes towards {target} in a blaze and {target} fails to evade, dealing {move:hpEvadeF neg} damage and {move:stEvadeF neg} {st.ext_full} drain!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "criticalSTValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "blockFailCriticalSTValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -45
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalSTValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -45
+            },
+            "criticalMessage": "{sender} dashes towards {target} in a scorching-hot blaze, critically dealing {move:hpCrit neg} damage and draining {move:stCrit neg} {st.ext_full}!",
+            "fastCriticalMessage": "{sender} quickly dashes towards {target} in a scorching-hot blaze, critically dealing {move:hpCrit neg} damage and draining {move:stCrit neg} {st.ext_full}!",
+            "blockFailCriticalMessage": "{sender} dashes towards {target} in a scorching-hot blaze and {target} fails to block, critically dealing {move:hpBlockFCrit neg} damage and {move:stBlockFCrit neg} {st.ext_full} drain!",
+            "evadeFailCriticalMessage": "{sender} dashes towards {target} in a scorching-hot blaze and {target} fails to evade, critically dealing {move:hpEvadeFCrit neg} damage and {move:stEvadeFCrit neg} {st.ext_full} drain!",
+            "failureChance": 8,
+            "failureHPValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -15
+            },
+            "failureMessage": "{sender} tries to dash towards {target} but explodes into a ball of fire, losing {move:hpF neg} {hp.ext_full}, {move:stC neg} {st.ext_full}, and {move:mpC neg} {mp.ext_full}!"
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Hammer",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Kirby"
+                    }
+                ]
+            ],
+            "description": "Charge up your hammer and smash down.",
+            "itemRequired": [
+                [
+                    {
+                        "name": "Large Hammer"
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} charges up their hammer and slams it down on {target}, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -40
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -61,
+                "right": -70
+            },
+            "effects": [
+                {
+                    "__type__": "StatusEffect",
+                    "values": {
+                        "name": "Hitstun",
+                        "description": "Stun from being hit by a hammer.",
+                        "target": "target",
+                        "chances": [
+                            [
+                                20,
+                                "uncountered"
+                            ],
+                            [
+                                70,
+                                "block"
+                            ]
+                        ],
+                        "duration": 1,
+                        "receiveMessage": "{self} is in hitstun!",
+                        "wearoffMessage": "{self}'s hitstun has worn off.",
+                        "noMove": "{self} cannot move due to hitstun!"
+                    }
+                }
+            ],
+            "speed": 10,
+            "fastMessage": "{sender} quickly charges up their hammer and slams it down on {target}, dealing {move:hp neg} damage!",
+            "blockChance": 80,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": 0,
+                "right": -10
+            },
+            "blockSTValue": {
+                "__type__": "Bound",
+                "left": -45,
+                "right": -80
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -35
+            },
+            "blockFailSTValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "blockMessage": "{sender} charges up their hammer and {target} blocks, slamming down for {move:hpBlock neg} damage and {move:stBlock neg} {st.ext_full} drain!",
+            "blockFailMessage": "{sender} charges up their hammer and {target} fails to block, slamming down for {move:hpBlockF neg} damage and {move:stBlockF neg} {st.ext_full} drain!",
+            "evadeChance": 60,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -45
+            },
+            "evadeFailSTValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -25
+            },
+            "evadeMessage": "{sender} charges up their hammer but {target} evades, making {sender} miss!",
+            "evadeFailMessage": "{sender} charges up their hammer and {target} fails to evade, slamming down for {move:hpEvadeF neg} damage and {move:stEvadeF neg} {st.ext_full} drain!",
+            "criticalChance": 5,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -35,
+                "right": -45
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -35,
+                "right": -45
+            },
+            "blockFailCriticalSTValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -35,
+                "right": -50
+            },
+            "evadeFailCriticalSTValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -35
+            },
+            "criticalMessage": "{sender} charges up their hammer and SMASHES {target} with it, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} charges up their hammer and SMASHES {target} with it, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} charges up their hammer and SMASHES through {target}'s block, dealing {move:hpBlockFCrit neg} damage and {move:stBlockFCrit neg} {st.ext_full} drain!",
+            "evadeFailCriticalMessage": "{sender} charges up their hammer and {target} was too slow to evade, SMASHING {target} for {move:hpEvadeFCrit neg} damage and {move:stEvadeFCrit neg} {st.ext_full} drain!",
+            "failureChance": 10,
+            "failureSTValue": {
+                "__type__": "Bound",
+                "left": 40,
+                "right": 50
+            },
+            "failureMessage": "{sender} tries to charge their hammer but fails, losing {-(int(move.fmt('stC')) + int(move.fmt('stF')))} {st.ext_full}!"
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Inhale",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Kirby"
+                    }
+                ]
+            ],
+            "description": "Take a deep breath.",
+            "hpCost": {
+                "__type__": "Bound",
+                "left": 1,
+                "right": 5
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": 15,
+                "right": 30
+            },
+            "speed": 100,
+            "fastMessage": "{sender} takes a deep breath, regaining {move:hpC} {hp.ext_full} and {move:stC} {st.ext_full}.",
+            "blockChance": 0,
+            "evadeChance": 0,
+            "criticalChance": 0,
+            "failureChance": 6,
+            "failureSTValue": -14,
+            "failureMessage": "{sender} tries to take a deep breath but only gains {move:hpC} {hp.ext_full} and {int(move.fmt('stC')) + int(move.fmt('stF'))} {st.ext_full}."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Throw",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Kirby"
+                    }
+                ]
+            ],
+            "description": "Throw your opponent.",
+            "moveMessage": "{sender} throws {target} forwards for {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -15
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "speed": 40,
+            "fastMessage": "{sender} quickly throws {target} forwards for {move:hp neg} damage!",
+            "blockChance": 30,
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -12,
+                "right": -20
+            },
+            "blockMessage": "{sender} tries to throw {target} but {target} breaks free from {sender}'s grip!",
+            "blockFailMessage": "{sender} tries to throw {target} and {target} fails to break free, getting thrown for {move:hpBlockF neg} damage!",
+            "evadeChance": 55,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -16,
+                "right": -21
+            },
+            "evadeMessage": "{sender} tries to throw {target} but {target} evades it!",
+            "evadeFailMessage": "{sender} tries to throw {target} and {target} fails to evade it, getting thrown for {move:hpEvadeF neg} damage!",
+            "criticalChance": 12,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -17,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "criticalMessage": "{sender} strongly throws {target} forwards for {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} strongly and quickly throws {target} forwards for {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{target} fails to break free from {sender}'s grab and gets strongly thrown forwards for {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{target} fails to evade {sender}'s grab and gets strongly thrown forwards for {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 8,
+            "failureMessage": "{sender} tries to throw {target} but couldn't lift {target} up."
+        }
+    }
+]

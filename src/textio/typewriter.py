@@ -455,9 +455,12 @@ def print_sleep(*value, sleep=0, sleep_after=True, **kwargs):
 
 
 def print_sleep_multiline(*value, sep='\n', end='\n', **kwargs):
-    """Sleep before/after every newline in the given value(s).
+    """Sleep before/after every newline in the given value(s)
+    using `print_sleep`.
 
     `sep` default has been changed to '\n', allowing comma separated lines.
+
+    Use keyword arguments to provide parameters to `print_sleep`.
 
     """
     values = sep.join([str(a) for a in value])

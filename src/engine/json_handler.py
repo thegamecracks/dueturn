@@ -21,6 +21,8 @@ import json
 
 # Import objects that are expected to be deserialized
 from .bound import Bound
+# from .fighter import Fighter
+from .stat import Stat, StatInfo
 from .item import Item
 from .move import Move
 from .movetype import MoveType
@@ -33,7 +35,9 @@ objects = {
     'Move': Move,
     'MoveType': MoveType,
     'Skill': Skill,
-    'StatusEffect': StatusEffect
+    'Stat': Stat,
+    'StatInfo': StatInfo,
+    'StatusEffect': StatusEffect,
 }
 
 

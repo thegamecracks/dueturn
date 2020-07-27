@@ -33,6 +33,8 @@ class Bound(JSONSerializableBasic):
 
     """
 
+    __slots__ = ['left', 'right', 'randNum']
+
     def __init__(self, left, right=None):
         self.left = left
         if right is None:
@@ -94,6 +96,10 @@ class Bound(JSONSerializableBasic):
         if hasattr(obj, 'average'):
             return obj.average()
         return obj
+
+    def clamp(self, value):
+        """Clamps a value to between the left and right bounds."""
+        return max(self.left, min(value, self.right))
 
     def copy(self):
         """Return a new instance with the same left and right bounds."""

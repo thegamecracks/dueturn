@@ -1,3 +1,5 @@
+import gc
+import pathlib
 import sys
 import time
 import traceback
@@ -11,14 +13,54 @@ from src.textio import (
 logger = logs.get_logger()
 
 
-def divi_zero(n, m, raiseIfZero=False, failValue=0, mode=0):
+def assert_type(obj, class_or_tuple):
+    """Makes sure that a given object is of a specific type(s)."""
+    if not isinstance(obj, class_or_tuple):
+        if isinstance(class_or_tuple, tuple):
+            class_or_tuple = ' or '.join(
+                n.__name__ for n in class_or_tuple)
+        else:
+            class_or_tuple = class_or_tuple.__name__
+        raise AssertionError(
+            f'Expected instance of {class_or_tuple} but received object '
+            f'{obj} of class {obj.__class__.__name__}')
+    return obj
+
+
+def collect_and_log_garbage(log_handler=None):
+    garbageCollection = gc.get_stats()
+    garbageCollectionLog = '\n'.join(
+        [f'Generation {n}: {repr(d)}'
+         for n, d in enumerate(garbageCollection)])
+    if log_handler is not None:
+        logger.debug(
+            'Logging garbage collection:\n' + garbageCollectionLog)
+    return garbageCollectionLog
+
+
+def dict_copy(dictionary):
+    new = {}
+    for k, v in dictionary.items():
+        if isinstance(v, list):
+            new[k] = list_copy(v)
+        elif isinstance(v, dict):
+            new[k] = dict_copy(v)
+        elif hasattr(v, 'copy'):
+            new[k] = v.copy()
+        else:
+            new[k] = v
+    return new
+
+
+def divi_zero(n, m, *, raiseIfZero=False, failValue=0, mode=0):
     """Division function with tweakable settings.
 
     Args:
         n (Real): Dividend
         m (Real): Divisor
         raiseIfZero (bool):
-            If True, return failValue if the denominator is 0.
+            If True, raise ZeroDivisionError.
+            Else, return failValue.
         failValue (Real):
             Value to return if n == 0 or m == 0 and not raiseIfZero.
         mode (Literal[-1, 0, 1]):
@@ -75,11 +117,20 @@ def exception_message(
 
     # Create the message to return, containing the traceback and exception
     for frame in traceback.extract_tb(exc_traceback):
+        if frame.name == '<module>':
+            # Bottom of the stack; stop here
+            break
+
         msg += f'Frame {frame.name!r}\n'
-        # Show only the file name instead of the full location
-        filename = frame.filename[::-1]
-        filename = filename[:filename.find('\\') + 1] + '..'
-        filename = filename[::-1]
+        # Show only the path starting from project using instead of
+        # just the full path inside frame.filename
+        project_path = pathlib.Path().resolve()
+        trace_path = pathlib.Path(frame.filename)
+        try:
+            filename = trace_path.relative_to(project_path)
+        except ValueError:
+            # Trace must be outside of project; use that then
+            filename = trace_path
 
         msg += f'Within file "{filename}"\n'
         msg += f'at line number {frame.lineno}:\n'
@@ -129,7 +180,7 @@ def input_loop_if_equals(
 
     ans = input_func(message)
 
-    while (meaning := parse(ans)) is True:
+    while parse(ans) is True:
         ans = input_func(repeat_message)
 
     return ans
@@ -270,13 +321,13 @@ def input_boolean(
             repeat_message = message
         else:
             repeat_message = format_color(repeat_message)
-    
+
     # Get input
     ans = input_func(message).lower().strip()
 
     while (meaning := parse(ans)) is None:
         ans = input_func(repeat_message).lower().strip()
-    
+
     return meaning
 
 

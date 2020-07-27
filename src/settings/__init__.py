@@ -1,8 +1,8 @@
 """Provides functions to interact with configuration files.
 
-".json" is automatically appended when a config file is loaded.
+".json" is automatically appended to config_name.
 
-Settings are stored in ./config.
+Settings are stored in /config.
 
 ===============  =========================================================
 Function            Arguments: Description

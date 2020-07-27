@@ -13,7 +13,7 @@ class Item(JSONSerializableValues):
 
     Args:
         values (dict): A dictionary of values.
-    
+
     """
     def __init__(self, values: dict):
         self.values = values

@@ -52,14 +52,25 @@ DEFAULTS = {
     'interface': DEFAULT_INTERFACE
 }
 
+_cache = {}
+
 logger = logs.get_logger()
 
 
 class Configuration:
-    pass
+
+    @classmethod
+    def from_dict(cls, settings: dict):
+        obj = cls()
+        obj.__dict__ = settings
+
+        return obj
+
+    def to_dict(self):
+        return self.__dict__
 
 
-def _backup_settings(config_name):
+def _backup_config(config_name):
     location = _make_config_location(config_name)
     location_backup = location + '.backup'
 
@@ -75,9 +86,9 @@ def _backup_settings(config_name):
 
 def _make_config_location(config_name):
     """Provide the location of a configuration file.
-    
+
     Checks to make sure `config_name` is a known config.
-    
+
     """
     if config_name not in CONFIG_FILES:
         raise ValueError(f'{config_name!r} is not a known configuration file')
@@ -96,21 +107,30 @@ def load_config(config_name: str, *, as_object=True, auto_setup=True):
     """Load a configuration."""
     logger.debug(f'Loading {config_name} config')
 
+    # Check if there's a cached result
+    cache_result = _cache.get(config_name)
+    if cache_result is not None:
+        # Return a shallow copy of the cache
+        if as_object:
+            return Configuration.from_dict(cache_result.copy())
+        return cache_result.copy()
+
     location = _make_config_location(config_name)
 
-    if not pathlib.Path(location).exists():
-        if auto_setup:
-            verify_config(config_name)
+    if not pathlib.Path(location).exists() and auto_setup:
+        verify_config(config_name)
         # Else, let `open()` raise the FileNotFoundError
 
     with open(location) as f:
         config = json.load(f)
-    
+
+    if cache_result is None:
+        # Add to cache
+        _cache[config_name] = config.copy()
+
     if as_object:
-        config_obj = Configuration()
-        for k, v in config.items():
-            setattr(config_obj, k, v)
-        return config_obj
+        config = Configuration.from_dict(config)
+
     return config
 
 
@@ -140,6 +160,10 @@ def save_config(config_name: str, settings: dict, overwrite=True):
                      'creating directory and retrying')
         os.mkdir('./config')
         dump_json(location, settings)
+    else:
+        # Remove cached result for config
+        if config_name in _cache:
+            del _cache[config_name]
 
 
 def update_config(config_name: str, settings: dict):
@@ -147,7 +171,7 @@ def update_config(config_name: str, settings: dict):
     logger.debug(f'Updating {config_name} config')
 
     config = load_config(config_name)
-    config.update(obj)
+    config.update(settings)
     save_config(config_name, config)
 
     logger.debug(f'Updated {config_name} config')
@@ -171,7 +195,7 @@ def verify_config(config_name):
         save_config(config_name, default_settings)
     except json.decoder.JSONDecodeError as e:
         logger.warning(f'Failed to parse {location}: {e}')
-        backup(config_name)
+        _backup_config(config_name)
         save_config(config_name, default_settings)
     else:
         # Check that every key in the default settings exists in the file
@@ -181,7 +205,7 @@ def verify_config(config_name):
             if k not in settings:
                 logger.debug(f'Missing key {k!r}, adding default')
                 if not backed_up:
-                    _backup_settings(config_name)
+                    _backup_config(config_name)
                     backed_up = True
                 settings[k] = v
         else:
@@ -239,6 +263,7 @@ def setup_configs(config_names=None):
             logger.debug('All configurations verified')
         else:
             s = 's' if count != 1 else ''
-            logger.debug('{count} configuration file{s} verified')
+            logger.debug(f'{count} configuration file{s} verified')
     else:
-        raise TypeError(f'Unknown config_names argument given: {config_names!r}')
+        raise TypeError('Unknown config_names argument given: '
+                        f'{config_names!r}')

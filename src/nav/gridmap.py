@@ -499,10 +499,6 @@ def cardinal_to_vector(direction):
 def generate_spelunky_map(y_size, x_size, only_pathed_cells=False):
     """Create a GridMap with spelunky-style paths.
 
-    NOTE: If `only_pathed_cells`, then it should be redesigned so it
-        only creates new cells in its path generation instead of
-        filling the level with cells and deleting them afterwards.
-
     Returns:
         Tuple[GridMap, Tuple[int, int], Tuple[int, int]]:
             The level along with the start and end coordinates.
@@ -608,7 +604,7 @@ def main():
 
     def spelunky(only_pathed_cells=False, change_size=False):
         if change_size:
-            print('Hardcoded max size of 30 chars down, 119 chars right')
+            print('Hardcoded max size of 30 chars down, 120 chars right')
             print('or a map of either 7 by 29 or compact 14 by 58')
         else:
             y, x = 4, 4
@@ -630,7 +626,7 @@ def main():
 
             try:
                 print(level.render(
-                    29, 117, markers={start: 'S', end: 'E'}))
+                    29, 118, markers={start: 'S', end: 'E'}))
             except RuntimeError:
                 print('Failed render: too big to fit in border')
 

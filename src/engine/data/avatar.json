@@ -1,0 +1,432 @@
+[
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Tidal Wave",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Bender"
+                    }
+                ]
+            ],
+            "description": "Summon a tidal wave.",
+            "skillRequired": [
+                [
+                    {
+                        "__type__": "Skill",
+                        "name": "Water Bending",
+                        "level": 1
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} summons a tidal wave against {target}, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -15
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "speed": 40,
+            "fastMessage": "{sender} quickly summons a tidal wave against {target}, dealing {move:hp neg} damage!",
+            "blockChance": 70,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -5,
+                "right": -15
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "blockMessage": "{sender} summons a tidal wave and {target} blocks it, dealing {move:hpBlock neg} damage!",
+            "blockFailMessage": "{sender} summons a tidal wave and {target} fails to block it, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 40,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -25
+            },
+            "evadeMessage": "{sender} summons a tidal wave but {target} evades it!",
+            "evadeFailMessage": "{sender} summons a tidal wave and {target} fails to block it, dealing {move:hpEvadeF neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -16,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -30,
+                "right": -35
+            },
+            "criticalMessage": "{sender} summons a SUPER tidal wave against {target}, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} quickly summons a SUPER tidal wave against {target}, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} summons a SUPER tidal wave and {target} fails to block it, dealing {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{sender} summons a SUPER tidal wave and {target} fails to evade it, dealing {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 5,
+            "failureMessage": "{sender} fails to create a tidal wave towards {target}."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Ice Shards",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Bender"
+                    }
+                ]
+            ],
+            "description": "Send a flurry of ice shards.",
+            "skillRequired": [
+                [
+                    {
+                        "__type__": "Skill",
+                        "name": "Water Bending",
+                        "level": 1
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} shoots a flurry of ice shards at {target}, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "speed": 30,
+            "fastMessage": "{sender} quickly shoots a flurry of ice shards at {target}, dealing {move:hp neg} damage!",
+            "blockChance": 70,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -30
+            },
+            "blockMessage": "{sender} shoots a flurry of ice shards and {target} blocks, dealing {move:hpBlock neg} damage!",
+            "blockFailMessage": "{sender} shoots a flurry of ice shards and {target} fails to block, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 30,
+            "evadeSTValue": {
+                "__type__": "Bound",
+                "left": -5,
+                "right": -15
+            },
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeMessage": "{sender} shoots a flurry of ice shards but {target} evades them for {move:stEvade neg} {st.ext_full}!",
+            "evadeFailMessage": "{sender} shoots a flurry of ice shards and {target} fails to evade, dealing {move:hp neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "criticalMessage": "{sender} shoots a MASSIVE flurry of ice shards, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} quickly shoots a MASSIVE flurry of ice shards, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} shoots a MASSIVE flurry of ice shards and {target} fails to block, dealing {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{sender} shoots a MASSIVE flurry of ice shards and {target} fails to evade, dealing {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 5,
+            "failureMessage": "{sender} tries to shoot a flurry of ice shards but fails."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Pillar Strike",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Bender"
+                    }
+                ]
+            ],
+            "description": "Send a column of rock at your opponent.",
+            "skillRequired": [
+                [
+                    {
+                        "__type__": "Skill",
+                        "name": "Earth Bending",
+                        "level": 1
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} strikes {target} with a column of rock, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "speed": 15,
+            "fastMessage": "{sender} quickly strikes {target} with a column of rock, dealing {move:hp neg} damage!",
+            "blockChance": 70,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -30
+            },
+            "blockMessage": "{sender} sends a column of rock and {target} blocks, dealing {move:hpBlock neg} damage!",
+            "blockFailMessage": "{sender} sends a column of rock and {target} fails to block, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 30,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeMessage": "{sender} sends a column of rock but {target} evades it!",
+            "evadeFailMessage": "{sender} sends a column of rock and {target} fails to evade, dealing {move:hpEvadeF neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "criticalMessage": "{sender} quickly strikes {target} with a LARGE column of rock, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} quickly strikes {target} with a LARGE column of rock, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} sends a LARGE column of rock and {target} fails to block, dealing {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{sender} sends a LARGE column of rock and {target} fails to evade, dealing {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 5,
+            "failureMessage": "{sender} tries to send a column of rock but fails."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Fire Blast",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Bender"
+                    }
+                ]
+            ],
+            "description": "Throw a howitzer of flame.",
+            "skillRequired": [
+                [
+                    {
+                        "__type__": "Skill",
+                        "name": "Fire Bending",
+                        "level": 1
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} blasts {target} with a meteor of flame, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "speed": 15,
+            "fastMessage": "{sender} quickly blasts {target} with a meteor of flame, dealing {move:hp neg} damage!",
+            "blockChance": 70,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -30
+            },
+            "blockMessage": "{sender} shoots a meteor of flame and {target} blocks it, dealing {move:hpBlock neg} damage!",
+            "blockFailMessage": "{sender} shoots a meteor of flame and {target} fails to block it, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 30,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeMessage": "{sender} shoots a meteor of flame but {target} evades it!",
+            "evadeFailMessage": "{sender} shoots a meteor of flame and {target} fails to evade it, dealing {move:hpEvadeF neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "criticalMessage": "{sender} blasts {target} with a Sozin's Comet of flame, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} quickly blasts {target} with a Sozin's Comet of flame, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} shoots a Sozin's Comet of flame and {target} fails to block it, dealing {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{sender} shoots a Sozin's Comet of flame and {target} fails to evade it, dealing {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 5,
+            "failureMessage": "{sender} tries to shoot a meteor of flame but fails."
+        }
+    },
+    {
+        "__type__": "Move",
+        "values": {
+            "name": "Air Blast",
+            "moveTypes": [
+                [
+                    {
+                        "__type__": "MoveType",
+                        "name": "Bender"
+                    }
+                ]
+            ],
+            "description": "Expel a blast of air.",
+            "skillRequired": [
+                [
+                    {
+                        "__type__": "Skill",
+                        "name": "Air Bending",
+                        "level": 1
+                    }
+                ]
+            ],
+            "moveMessage": "{sender} blasts {target} back with a burst of air, dealing {move:hp neg} damage!",
+            "hpValue": {
+                "__type__": "Bound",
+                "left": -10,
+                "right": -20
+            },
+            "stCost": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "mpCost": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -20
+            },
+            "speed": 30,
+            "fastMessage": "{sender} quickly blasts {target} back with a burst of air, dealing {move:hp neg} damage!",
+            "blockChance": 70,
+            "blockHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -30
+            },
+            "blockMessage": "{sender} blasts a burst of air at {target} who is blocking, dealing {move:hpBlock neg} damage!",
+            "blockFailMessage": "{sender} blasts a burst of air and {target} fails to block it, dealing {move:hpBlockF neg} damage!",
+            "evadeChance": 30,
+            "evadeFailHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeMessage": "{sender} blasts a burst of air but {target} evades it!",
+            "evadeFailMessage": "{sender} blasts a burst of air and {target} fails to evade it, dealing {move:hpEvadeF neg} damage!",
+            "criticalChance": 10,
+            "criticalHPValue": {
+                "__type__": "Bound",
+                "left": -15,
+                "right": -25
+            },
+            "blockFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -20,
+                "right": -30
+            },
+            "evadeFailCriticalHPValue": {
+                "__type__": "Bound",
+                "left": -25,
+                "right": -35
+            },
+            "criticalMessage": "{sender} blasts {target} back with an EXPLOSION of air, dealing {move:hpCrit neg} damage!",
+            "fastCriticalMessage": "{sender} quickly blasts {target} back with an EXPLOSION of air, dealing {move:hpCrit neg} damage!",
+            "blockFailCriticalMessage": "{sender} blasts an EXPLOSION of air and {target} fails to block, dealing {move:hpBlockFCrit neg} damage!",
+            "evadeFailCriticalMessage": "{sender} blasts an EXPLOSION of air and {target} fails to evade it, dealing {move:hpEvadeFCrit neg} damage!",
+            "failureChance": 5,
+            "failureMessage": "{sender} tries to fire a blast of air at {target} but fails."
+        }
+    }
+]
