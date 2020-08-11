@@ -2,6 +2,7 @@ from . import util
 from .bound import Bound
 from .json_serialization import JSONSerializableBasic
 from src.textio import ColoramaCodes
+from src.utility import assert_type
 
 
 class StatInfo(JSONSerializableBasic):
@@ -39,6 +40,17 @@ class StatInfo(JSONSerializableBasic):
         self.ext_short = ext_short
         self.ext_full = ext_full
         self._color_fore = color_fore
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return (
+                self.int_short == other.int_short
+                and self.int_full == other.int_full
+                and self.ext_short == other.ext_short
+                and self.ext_full == other.ext_full
+                and self._color_fore == other._color_fore
+            )
+        return NotImplemented
 
     def __repr__(self):
         return '{}({})'.format(
@@ -115,7 +127,7 @@ class Stat(JSONSerializableBasic):
         self._color_fore = color_fore
 
         self._value = value
-        self.bound = util.assert_type(bound, Bound)
+        self.bound = assert_type(bound, Bound)
         self.rate = rate
 
     def __repr__(self):

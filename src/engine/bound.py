@@ -27,31 +27,37 @@ class Bound(JSONSerializableBasic):
     str(float(Bound())) --> Return last generated float as a string
 
     Args:
-        left (Union[int, float]): The left bound.
-        right (Optional[Union[int, float]]): The right bound.
-            If None, will be set to the left bound.
+        lower (Union[int, float]): The lower bound.
+        upper (Optional[Union[int, float]]): The upper bound.
+            If None, will be set to the lower bound.
 
     """
 
-    __slots__ = ['left', 'right', 'randNum']
+    __slots__ = ['lower', 'upper']
 
-    def __init__(self, left, right=None):
-        self.left = left
-        if right is None:
-            self.right = self.left
+    def __init__(self, lower, upper=None):
+        if upper is None:
+            upper = lower
         else:
-            self.right = right
-        self.randNum = 0.0
+            # Sort lower and upper so lower < upper
+            lower, upper = (lower, upper) if lower < upper else (upper, lower)
 
-    def __float__(self):
-        """Returns self.randNum as a float."""
-        return float(self.randNum)
+        self.lower = lower
+        self.upper = upper
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return (
+                self.lower == other.lower
+                and self.upper == other.upper
+            )
+        return NotImplemented
 
     def __repr__(self):
         return '{}({}, {})'.format(
             self.__class__.__name__,
-            self.left,
-            self.right
+            self.lower,
+            self.upper
         )
 
     def random(self):
@@ -62,26 +68,21 @@ class Bound(JSONSerializableBasic):
             float: A random uniform number; one or both endpoints are floats.
 
         """
-        if self.left < self.right:
-            if isinstance(self.left, float) or isinstance(self.right, float):
-                self.randNum = random.uniform(self.left, self.right)
-            else:
-                self.randNum = float(random.randint(self.left, self.right))
-        else:
-            if isinstance(self.left, float) or isinstance(self.right, float):
-                self.randNum = random.uniform(self.right, self.left)
-            else:
-                self.randNum = float(random.randint(self.right, self.left))
-        return self.randNum
+        use_uniform = (isinstance(self.lower, float)
+                       or isinstance(self.upper, float))
+
+        if use_uniform:
+            return random.uniform(self.lower, self.upper)
+        return float(random.randint(self.lower, self.upper))
 
     def average(self) -> float:
         """Return the mean average between the two endpoints.
 
         Returns:
-            float: The average between self.left and self.right.
+            float: The average between self.lower and self.upper.
 
         """
-        return (self.left + self.right) / 2
+        return (self.lower + self.upper) / 2
 
     @staticmethod
     def call_random(obj):
@@ -90,27 +91,20 @@ class Bound(JSONSerializableBasic):
             return obj.random()
         return obj
 
-    @staticmethod
-    def call_average(obj):
-        """Call the average() method on an object if available."""
-        if hasattr(obj, 'average'):
-            return obj.average()
-        return obj
-
     def clamp(self, value):
-        """Clamps a value to between the left and right bounds."""
-        return max(self.left, min(value, self.right))
+        """Clamps a value to between the lower and upper bounds."""
+        return max(self.lower, min(value, self.upper))
 
     def copy(self):
-        """Return a new instance with the same left and right bounds."""
-        return self.__class__(self.left, self.right)
+        """Return a new instance with the same lower and upper bounds."""
+        return self.__class__(self.lower, self.upper)
 
     def to_JSON(self):
         # Store object type so the decoder knows what object this is
         literal = {
             '__type__': self.__class__.__name__,
-            'left': self.left,
-            'right': self.right
+            'lower': self.lower,
+            'upper': self.upper
         }
 
         return literal

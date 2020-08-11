@@ -13,8 +13,10 @@ from .skill import Skill
 from src import logs
 from src import settings
 from src.textio import (
-    ColoramaCodes, cr, format_color, input_color, print_color
+    ColoramaCodes, cr, format_color, input_color, print_color,
+    input_boolean, input_loop_if_equals
 )
+from src.utility import dict_copy, list_copy, plural
 
 logger = logs.get_logger()
 
@@ -73,7 +75,7 @@ class BattleEnvironment:
             Skill('Bow Handling', 1),
         ],
         # [MoveType('Physical'), MoveType('Magical')]
-        'moveTypes': [
+        'movetypes': [
             MoveType('Physical'),
             MoveType('Magical'),
         ],
@@ -131,7 +133,7 @@ class BattleEnvironment:
         ],
     }
     DEFAULT_PLAYER_SETTINGS_A = {
-        # 'moveTypes': [MoveType('Kirby')],
+        # 'movetypes': [MoveType('Kirby')],
         # 'AI': FighterAISwordFirst,
     }
     DEFAULT_PLAYER_SETTINGS_B = {
@@ -193,8 +195,8 @@ class BattleEnvironment:
             *,
             fighters=None,
             random_player_names=None,
-            gamemode=None,
-            AI=None,
+            gamemode='',
+            AI='',
             default_player_settings=None,
             default_player_settings_A=None,
             default_player_settings_B=None,
@@ -349,12 +351,12 @@ else:
             if B and 'randomize_moves_B' in self.data:
                 del self.data['randomize_moves_B']
 
-        def filter_moves_by_move_types(moves, moveTypes):
+        def filter_moves_by_move_types(moves, movetypes):
             return [
                 m for m in moves
-                if 'moveTypes' in m
-                and Fighter.availableMoveCombination(
-                    m, 'moveTypes', moveTypes
+                if 'movetypes' in m
+                and Fighter.available_combination_in_move(
+                    m, 'movetypes', movetypes
                 )
             ]
 
@@ -375,7 +377,7 @@ else:
                 'Earth Bending', 'Water Bending', 'Fire Bending', 'Air Bending'
             ]
 
-            self.default_player_settings['moveTypes'] = [MoveType('Bender')]
+            self.default_player_settings['movetypes'] = [MoveType('Bender')]
 
             del self.default_player_settings['inventory']
 
@@ -394,7 +396,7 @@ else:
             self.default_player_settings_B['moves'] = json_handler.load(
                 'src/engine/data/moves.json', encoding='utf-8')
             self.default_player_settings_A['name'] = 'Kirby'
-            self.default_player_settings_A['moveTypes'] = [MoveType('Kirby')]
+            self.default_player_settings_A['movetypes'] = [MoveType('Kirby')]
 
             stop_randomization_of_moves()
         elif self.gamemode == 'footsies':
@@ -405,10 +407,10 @@ else:
             self.default_player_settings['stats']['st'].value = 0
             self.default_player_settings['stats']['st'].rate = 0
             del self.default_player_settings['stats']['mp']
-            moveTypes = [MoveType('Footsies')]
-            self.default_player_settings['moveTypes'] = moveTypes
+            movetypes = [MoveType('Footsies')]
+            self.default_player_settings['movetypes'] = movetypes
             self.default_player_settings['moves'] = filter_moves_by_move_types(
-                self.default_player_settings['moves'], moveTypes
+                self.default_player_settings['moves'], movetypes
             )
 
             stop_randomization_of_moves()
@@ -420,7 +422,7 @@ else:
                 'src/engine/data/kirby.json', encoding='utf-8')
 
             self.default_player_settings_B['name'] = 'Kirby'
-            self.default_player_settings_B['moveTypes'] = [MoveType('Kirby')]
+            self.default_player_settings_B['movetypes'] = [MoveType('Kirby')]
         elif self.gamemode == 'hard':
             self.default_player_settings['moves'] = json_handler.load(
                 'src/engine/data/moves.json', encoding='utf-8')
@@ -489,11 +491,11 @@ else:
         self.gamemode = self._gamemode
         self.AI = self._AI
         self.default_player_settings = \
-            util.dict_copy(self._default_player_settings)
+            dict_copy(self._default_player_settings)
         self.default_player_settings_A = \
-            util.dict_copy(self._default_player_settings_A)
+            dict_copy(self._default_player_settings_A)
         self.default_player_settings_B = \
-            util.dict_copy(self._default_player_settings_B)
+            dict_copy(self._default_player_settings_B)
         self.data = {k: v.copy() if hasattr(v, 'copy') else v
                      for k, v in self._data.items()}
 
@@ -540,12 +542,51 @@ else:
 
     def begin_battle(
             self, a, b, *,
+            statLogA=None, statLogB=None,
+            starting_turn=2,
             autoplay=False,
-            return_end_message=True):
+            return_end_message=True,
+            stop_after_move=False):
         """
+        Args:
+            a (Fighter)
+            b (Fighter): The two fighters battling each other.
+            statLogA (Optional[List[dict]])
+            statLogB (Optional[List[dict]]): A stat log generated by
+                self.battle_stats_log() for their respective fighters.
+                This info is used to calculate what stats have changed.
+            starting_turn (int): The starting turn.
+                If uneven, fighter B will move first.
+                By default the starting turn is 2 so if one wins
+                and `return_end_message` is True, it will show
+                that the battle took one turn (`turn // 2`).
+            autoplay (bool): Will use time.sleep instead of input()
+                whenever there is a pause.
+            return_end_message (bool): If True, a list of color-formatted
+                end messages is returned and can be printed out with
+                `self.print_end_message`. Otherwise, returns None.
+                If you know you will not print the default end message,
+                set this to False so the messages do not get generated.
+            stop_after_move (bool): If True, the next Fighter to move
+                will not trigger `target.move_receive` but instead returns
+                the results of `sender.move(do_not_send=True)`.
+                If the result is a dictionary then `statLogA`, `statLogB`,
+                and `turn` values are added.
+                Note that `turn` is assigned to the "starting_turn" key to
+                simplify using the return value as a starred expression
+                for this method.
+                Creating a custom code loop:
+                    results = {}
+                    while True:
+                        results = begin_battle(a, b, stop_after_move=True,
+                                               **results)
+                        if not isinstance(results, dict):
+                            break
+                        move_result = results.pop('move_result')
+                        # <Your code here>
         Returns:
             list: Contains 4 lines
-                "Number of Turns: {turns}"
+                "Number of Turns: {turn}"
                 Fighter A's health: {hp}
                 Fighter B's health: {hp}
                 "The winner is {winner}!"
@@ -564,7 +605,7 @@ else:
 
         def autoplay_pause():
             if autoplay:
-                if a.isPlayer or b.isPlayer:
+                if a.is_player or b.is_player:
                     # If there is one/two players, pause AUTOPLAY seconds
                     util.pause(
                         cfg_engine.GAME_AUTOPLAY_NORMAL_DELAY
@@ -588,7 +629,7 @@ else:
 
         def get_status_effects_print_delay():
             if autoplay:
-                if a.isPlayer or b.isPlayer:
+                if a.is_player or b.is_player:
                     return (
                         cfg_engine.GAME_AUTOPLAY_NORMAL_DELAY
                         / cfg_engine.GAME_DISPLAY_SPEED
@@ -600,37 +641,42 @@ else:
                     )
             return None
 
-        logger.info(
-            f'Starting fight against {a.decoloredName} and {b.decoloredName}')
-        turns = 0
-        statLogA, statLogB = self.battle_stats_log(a), self.battle_stats_log(b)
+        def is_dead(fighter):
+            return hasattr(fighter, 'hp') and fighter.hp <= 0
 
-        # Game Loop
-        print()
-        while a.hp > 0 and b.hp > 0:
-            turns += 1
+        logger.info('Starting fight against '
+                    f'{a.name_decolored} and {b.name_decolored}')
+        turn = starting_turn
+        move_result = None
+        statLogA = self.battle_stats_log(a) if statLogA is None else statLogA
+        statLogB = self.battle_stats_log(b) if statLogB is None else statLogB
 
-            effects_messages_durations = a.updateStatusEffectsDuration()
-            effects_messages_values = a.applyStatusEffectsValues()
+        def a_turn():
+            nonlocal move_result
+            nonlocal statLogA
+            nonlocal statLogB
+
+            effects_messages_durations = a.update_status_effect_durations()
+            effects_messages_values = a.update_status_effect_values()
             if effects_messages_values:
                 autoplay_pause()
-                a.printStatusEffectsMessages(effects_messages_values,
+                a.print_status_effect_messages(effects_messages_values,
                                              get_status_effects_print_delay())
                 if autoplay:
                     print()
-            elif turns > 1:
+            elif turn > 1:
                 # Only triggers after first turn so battle starts immediately
                 autoplay_pause()
 
-            if a.hp <= 0 or b.hp <= 0:
-                break
+            if is_dead(a) or is_dead(b):
+                return False
 
             # Print a chart of both fighters' stats
-            print(fight_chart(topMessage='<--'), end='\n')
+            print(fight_chart(topMessage='<--'))
 
             autoplay_pause()
             if effects_messages_durations:
-                a.printStatusEffectsMessages(effects_messages_durations,
+                a.print_status_effect_messages(effects_messages_durations,
                                              get_status_effects_print_delay())
                 print()
 
@@ -641,35 +687,41 @@ else:
 
             # Print user moves if enabled
             if cfg_engine.GAME_DISPLAY_PRINT_MOVES:
-                print_color(a.formatMoves())
-            a.move(b)
+                print_color(a.string_moves())
 
-            if a.hp <= 0 or b.hp <= 0:
-                break
+            # Fighter attacks
+            move_result = a.move(b, do_not_send=stop_after_move)
 
             if not cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 # Show regeneration
                 statLogA = self.battle_stats_log(a)
-            a.updateStats()
+            if not is_dead(a) and not is_dead(b):
+                a.update_stats()
+                return True
+            return False
 
-            # Repeat for B
-            effects_messages_durations = b.updateStatusEffectsDuration()
-            effects_messages_values = b.applyStatusEffectsValues()
+        def b_turn():
+            nonlocal move_result
+            nonlocal statLogA
+            nonlocal statLogB
+
+            effects_messages_durations = b.update_status_effect_durations()
+            effects_messages_values = b.update_status_effect_values()
             autoplay_pause()
             if effects_messages_values:
-                b.printStatusEffectsMessages(effects_messages_values,
+                b.print_status_effect_messages(effects_messages_values,
                                              get_status_effects_print_delay())
                 if autoplay:
                     print()
 
-            if a.hp <= 0 or b.hp <= 0:
-                break
+            if is_dead(a) or is_dead(b):
+                return False
 
-            print(fight_chart(topMessage='-->'), end='\n')
+            print(fight_chart(topMessage='-->'))
 
             autoplay_pause()
             if effects_messages_durations:
-                b.printStatusEffectsMessages(effects_messages_durations,
+                b.print_status_effect_messages(effects_messages_durations,
                                              get_status_effects_print_delay())
                 print()
 
@@ -678,20 +730,70 @@ else:
                 statLogB = self.battle_stats_log(b)
 
             if cfg_engine.GAME_DISPLAY_PRINT_MOVES:
-                print_color(b.formatMoves())
+                print_color(b.string_moves())
 
-            b.move(a)
-
-            if a.hp <= 0 or b.hp <= 0:
-                break
+            move_result = b.move(a, do_not_send=stop_after_move)
 
             if not cfg_engine.GAME_DISPLAY_SHOW_STAT_DIFFERENCE:
                 statLogB = self.battle_stats_log(b)
-            b.updateStats()
+            if not is_dead(a) and not is_dead(b):
+                b.update_stats()
+                return True
+            return False
+
+        def game_loop():
+            nonlocal turn
+
+            someone_has_moved = False
+
+            while True:
+                if turn % 2 == 0:
+                    continue_turn = a_turn()
+                    someone_has_moved = True
+                    turn += 1
+                else:
+                    # Skip to fighter B's turn
+                    continue_turn = True
+
+                if not continue_turn or stop_after_move and someone_has_moved:
+                    # Either a_turn() says a fighter has no health
+                    # or stop_after_move is True and fighter A has moved
+                    break
+
+                # Repeat for B
+                if turn % 2 != 0:
+                    continue_turn = b_turn()
+                    someone_has_moved = True
+                    turn += 1
+                else:
+                    # Skip to fighter A's turn
+                    continue_turn = True
+
+                if not continue_turn or stop_after_move and someone_has_moved:
+                    # Either b_turn() says a fighter has no health
+                    # or stop_after_move is True and fighter B has moved
+                    break
+
+        print()
+        if not is_dead(a) and not is_dead(b):
+            game_loop()
+
+        if not is_dead(a) and not is_dead(b) and stop_after_move:
+            # Return results of move since `stop_after_move` is True
+            # along with the info required to continue `begin_battle`
+            return {
+                    'move_result': move_result,
+                    'starting_turn': turn,
+                    'statLogA': statLogA,
+                    'statLogB': statLogB
+                }
+
+        # Semantically, one turn is where both fighters move
+        turn //= 2
 
         # Print results
-        winner = a if a.hp > 0 and b.hp <= 0 \
-            else b if b.hp > 0 and a.hp <= 0 \
+        winner = a if not is_dead(a) and is_dead(b) \
+            else b if is_dead(a) and not is_dead(b) \
             else None
 
         # Show the stat change only for the loser
@@ -709,7 +811,7 @@ else:
 
         logFightChart = '\n'.join(fightChart_nocolor.split('\n')[1:])
         logger.info(
-            f'Fight ended in {turns} turn{util.plural(turns)}:\n'
+            f'Fight ended in {turn} turn{plural(turn)}:\n'
             f'{logFightChart}\n'
         )
 
@@ -721,7 +823,7 @@ else:
         if return_end_message:
             end_message = []
 
-            end_message.append(f"Number of Turns: {turns}")
+            end_message.append(f"Number of Turns: {turn}")
 
             a_win_color = (ColoramaCodes.FLgree if a.hp > 0
                            else ColoramaCodes.FLred)
@@ -811,7 +913,7 @@ else:
         color_number_only = True if color == 1 else False
 
         message = str(fighter)
-        no_codes = [fighter.decoloredName]
+        no_codes = [fighter.name_decolored]
 
         def chart_stat(*args, **kwargs):
             nonlocal fighter, message
@@ -937,21 +1039,24 @@ else:
         autoplay = False
 
         # Define input functions
-        def input_name_func(*args, **kwargs):
-            """Modified input_color function that strips whitespace."""
-            return input_color(*args, **kwargs).strip()
-
+        def reset_color_method(s):
+            print(ColoramaCodes.RESET_ALL, end='')
+            return s
+        print_color_without_newline = functools.partial(
+            print_color, end='')
         input_boolean_color = functools.partial(
-            util.input_boolean,
-            repeat_message='Answer with {true} or {false}: {FLcyan}',
+            input_boolean,
+            repeat_prompt='Answer with {true} or {false}: {FLcyan}',
             false=('no', 'n'),
-            input_func=input_color
+            apply_methods=(str.strip, str.casefold, reset_color_method),
+            print_func=print_color_without_newline
         )
         input_name = functools.partial(
-            util.input_loop_if_equals,
-            repeat_message='Name cannot be empty: {FLcyan}',
+            input_loop_if_equals,
+            repeat_prompt='Name cannot be empty: {FLcyan}',
             loop_if_equals=(''),
-            input_func=input_name_func
+            apply_methods=(str.strip, str.casefold, reset_color_method),
+            print_func=print_color_without_newline
         )
 
         # Get player options
@@ -987,13 +1092,13 @@ else:
             Tuple[Dict, Dict]: The first and second players settings.
 
         """
-        firstPlayerSettings = util.dict_copy(self.default_player_settings)
+        firstPlayerSettings = dict_copy(self.default_player_settings)
         firstPlayerSettings.update(
-            util.dict_copy(self.default_player_settings_A)
+            dict_copy(self.default_player_settings_A)
         )
-        secondPlayerSettings = util.dict_copy(self.default_player_settings)
+        secondPlayerSettings = dict_copy(self.default_player_settings)
         secondPlayerSettings.update(
-            util.dict_copy(self.default_player_settings_B)
+            dict_copy(self.default_player_settings_B)
         )
 
         if initializeAI:
@@ -1028,12 +1133,12 @@ else:
         defaultStatusEffects = defaultSettings.get('status_effects')
 
         if defaultPlayerItems is not None:
-            playerSettings['inventory'] = util.list_copy(defaultPlayerItems)
+            playerSettings['inventory'] = list_copy(defaultPlayerItems)
         elif defaultItems is not None:
-            playerSettings['inventory'] = util.list_copy(defaultItems)
+            playerSettings['inventory'] = list_copy(defaultItems)
 
         if defaultStatusEffects is not None:
-            playerSettings['status_effects'] = util.list_copy(
+            playerSettings['status_effects'] = list_copy(
                 defaultStatusEffects)
 
     def player_update_names(
@@ -1076,7 +1181,7 @@ else:
 
     def player_create_fighters(
             self, firstPlayerSettings, secondPlayerSettings,
-            firstIsPlayer=False, secondIsPlayer=False):
+            firstis_player=False, secondis_player=False):
         """Creates the players' fighters.
 
         The BattleEnvironment() is automatically given to the fighters.
@@ -1084,9 +1189,9 @@ else:
         Args:
             firstPlayerSettings (Dict): The first player's settings.
             secondPlayerSettings (Dict): The second player's settings.
-            firstIsPlayer (Optional[Union[bool, str]]):
+            firstis_player (Optional[Union[bool, str]]):
                 Enable player control of the first fighter.
-            secondIsPlayer (Optional[Union[bool, str]]):
+            secondis_player (Optional[Union[bool, str]]):
                 Enable player control of the second fighter.
 
         Returns:
@@ -1095,11 +1200,11 @@ else:
         """
         firstFighter = Fighter(
             **firstPlayerSettings, battle_env=self,
-            isPlayer=True if firstIsPlayer else False
+            is_player=True if firstis_player else False
         )
         secondFighter = Fighter(
             **secondPlayerSettings, battle_env=self,
-            isPlayer=True if secondIsPlayer else False
+            is_player=True if secondis_player else False
         )
 
         return firstFighter, secondFighter

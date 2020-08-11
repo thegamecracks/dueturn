@@ -135,7 +135,7 @@ def load_config(config_name: str, *, as_object=True, auto_setup=True):
 
 
 def save_config(config_name: str, settings: dict, overwrite=True):
-    """Saves settings to a .json file."""
+    """Save a complete set of settings into a config file."""
 
     def dump_json(location, settings):
         with open(location, mode='w') as f:

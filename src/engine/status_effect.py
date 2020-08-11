@@ -28,7 +28,7 @@ class StatusEffect(JSONSerializableValues):
                 # Applies to target on critical regardless of counter
                 (40, 'block'),
                 # Applies to target if block was attempted
-                # Note: any counter name in Fighter.allCounters can be used
+                # Note: any counter name in Fighter.all_counters can be used
                 (0, 'blockSuccess'),
                 # Applies to target if successful block
                 (0, 'blockFailure')
@@ -54,6 +54,11 @@ class StatusEffect(JSONSerializableValues):
 
     def __init__(self, values):
         self.values = values
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.values == other.values
+        return NotImplemented
 
     def __repr__(self):
         return '{}({})'.format(

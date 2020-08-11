@@ -3,7 +3,8 @@ class BoolDetailed:
     def __init__(self, boolean, name, description, *other):
         if not isinstance(boolean, bool):
             raise TypeError(
-                f'Expected bool for boolean, received object of type {type(boolean)}')
+                'Expected bool for boolean, received object of type '
+                f'{type(boolean)}')
         self.boolean = boolean
         self.name = name
         self.description = description

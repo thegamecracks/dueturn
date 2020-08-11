@@ -18,6 +18,11 @@ class Item(JSONSerializableValues):
     def __init__(self, values: dict):
         self.values = values
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.values == other.values
+        return NotImplemented
+
     def __repr__(self):
         return '{}({})'.format(
             self.__class__.__name__,

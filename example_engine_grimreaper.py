@@ -3,6 +3,8 @@ import time
 from src import textio
 from src import engine as dueturn
 from src.engine import fighter_ai
+from src.textio import input_boolean
+from src.utility import list_copy
 
 
 def main():
@@ -22,23 +24,23 @@ def main():
         skills=[dueturn.Skill('Acrobatics', 1),
                 dueturn.Skill('Knife Handling', 2),
                 dueturn.Skill('Bow Handling', 1)],
-        moveTypes=[dueturn.MoveType('Physical'), dueturn.MoveType('Magical')],
+        movetypes=[dueturn.MoveType('Physical'), dueturn.MoveType('Magical')],
         # Use moves provided by game engine in sorted order
         moves=sorted(moveList, key=lambda x: x['name']),
-        counters=dueturn.Fighter.allCounters.copy(),  # Give all counters
-        inventory=dueturn.util.list_copy(
+        counters=dueturn.Fighter.all_counters.copy(),  # Give all counters
+        inventory=list_copy(
             dueturn.BattleEnvironment.DEFAULT_PLAYER_SETTINGS['inventory']
         ),  # Copies the inventory from the BattleEnvironment's constants
-        isPlayer=True,  # Gives control to user when required
-        AI=None,  # The AI is only needed when isPlayer is False
-        battleShellDict=None  # Auto-generates data for the battle interface
+        is_player=True,  # Gives control to user when required
+        AI=None,  # The AI is only needed when is_player is False
+        interface_shell_dict=None  # Auto-generates data for the battle interface
     )
 
     boss_moves = [
         dueturn.noneMove,
         dueturn.Move({
             'name': 'Grim Strike',
-            'moveTypes': ([dueturn.MoveType('Physical')],),
+            'movetypes': ([dueturn.MoveType('Physical')],),
             'description': 'A downwards strike with the Scythe.',
             'moveMessage': """\
     {sender}{FLred} strikes down {target}{FLred} with the Scythe \
@@ -70,14 +72,14 @@ def main():
         battle_env=None,  # Set this when its needed
         name='{FLred}The Grim Reaper{RA}',
         stats=boss_stats,
-        moveTypes=[dueturn.MoveType('Physical')],
+        movetypes=[dueturn.MoveType('Physical')],
         moves=boss_moves,
-        counters=dueturn.Fighter.allCounters.copy(),
+        counters=dueturn.Fighter.all_counters.copy(),
         AI=fighter_ai.FighterAIGeneric(),
-        battleShellDict=False
+        interface_shell_dict=False
     )
 
-    if dueturn.util.input_boolean(
+    if input_boolean(
             'Do you want to fight the final boss? ',
             false=('no', 'n')):
         # Turn default color to red
@@ -87,11 +89,10 @@ def main():
         time.sleep(1.5)
 
         with dueturn.BattleEnvironment(
-                # Automatically set and reset the fighters' battle environment
-                fighters=[player_fighter, boss],
-                random_player_names=None,  # No random names will be used
-                gamemode='', AI='',  # Disables gamemode/AI changing
-                base_values_multiplier_percent=300  # Triple damage
+                    # Automatically set and reset the fighters' battle_env
+                    fighters=[player_fighter, boss],
+                    random_player_names=None,  # No random names will be used
+                    base_values_multiplier_percent=300  # Triple damage
                 ) as battle:
             battle.begin_battle(player_fighter, boss,
                                 autoplay=True, return_end_message=False)

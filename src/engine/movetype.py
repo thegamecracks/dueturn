@@ -7,6 +7,11 @@ class MoveType(JSONSerializableBasic):
     def __init__(self, name):
         self.name = name
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.name == other.name
+        return NotImplemented
+
     def __repr__(self):
         return '{}({!r})'.format(
             self.__class__.__name__,

@@ -1,7 +1,7 @@
 import collections
 import heapq
 
-from gridmap import *
+from .gridmap import *
 
 
 class Node:

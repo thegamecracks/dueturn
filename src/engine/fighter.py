@@ -1,5 +1,6 @@
+# TODO: Standardize the Fighter's method names to follow
+# lowercase_separated_with_underscores
 import random
-from typing import List, Optional, Tuple, Union
 
 from . import interface
 from . import util
@@ -12,6 +13,7 @@ from src import settings
 from src.textio import (  # Color I/O
     ColoramaCodes, cr, format_color, input_color, print_color
 )
+from src.utility import custom_divide, plural
 
 logger = logs.get_logger()
 
@@ -41,7 +43,7 @@ class Fighter:
         skills (Optional[List[Skill]]):
             A list of `Skill` that the Fighter has.
             If None, defaults to an empty list.
-        moveTypes (Optional[List[MoveType]]):
+        movetypes (Optional[List[MoveType]]):
             A list of `MoveType` that the Fighter has.
             If None, defaults to an empty list.
         moves (Optional[List[Move]]):
@@ -49,20 +51,20 @@ class Fighter:
             If None, defaults to an empty list.
         counters (Optional[Dict[str, str]]):
             A dictionary of counters that the Fighter has.
-            If None, defaults to a shallow copy of Fighter.allCounters.
+            If None, defaults to a shallow copy of Fighter.all_counters.
         inventory (Optional[List[Item]]):
             A list of `Item` that the Fighter has.
             If None, defaults to an empty list.
-        isPlayer (bool): If True, provides an interface for the user to
+        is_player (bool): If True, provides an interface for the user to
             command the Fighter with during a battle.
             If False, uses `AI` to command the Fighter.
-        AI (Optional[Any]): The AI that the Fighter uses if not `isPlayer`.
-        battleShellDict (Optional[dict]): A dictionary used by the user's
+        AI (Optional[Any]): The AI that the Fighter uses if not `is_player`.
+        interface_shell_dict (Optional[dict]): A dictionary used by the user's
             interface when battling. If None, defaults to a dictionary
             specifying to the shell that it is the user's first time.
 
     """
-    allCounters = {  # Footnote 1
+    all_counters = {  # Footnote 1
         'none': 'none',
         'block': 'block',
         'evade': 'evade'
@@ -73,13 +75,13 @@ class Fighter:
             stats=None,
             status_effects=None,
             skills=None,
-            moveTypes=None,
+            movetypes=None,
             moves=None,
             counters=None,
             inventory=None,
-            isPlayer=False,
+            is_player=False,
             AI=None,
-            battleShellDict=None):
+            interface_shell_dict=None):
 
         self.name = name
 
@@ -97,7 +99,9 @@ class Fighter:
                 return self.stats[int_short].value
 
             def fset_stat(self, value):
-                self.stats[int_short].value = value
+                self.stats[int_short].value = (
+                    self.stats[int_short].bound.clamp(value)
+                )
 
             doc_stat = f'Property for "{int_short}" stat.'
 
@@ -146,36 +150,36 @@ class Fighter:
         else: self.skills = skills
 
         # Move Type default is an empty list
-        if moveTypes is None: self.moveTypes = []
-        else: self.moveTypes = moveTypes
+        if movetypes is None: self.movetypes = []
+        else: self.movetypes = movetypes
 
         # Moves default is an empty list
         if moves is None: self.moves = []
         else: self.moves = moves
 
         # Counters default are all counters
-        if counters is None: self.counters = self.allCounters.copy()
+        if counters is None: self.counters = self.all_counters.copy()
         else: self.counters = counters
 
         # Inventory default is an empty list
         if inventory is None: self.inventory = []
         else: self.inventory = inventory
 
-        # isPlayer default is False
-        self.isPlayer = isPlayer
+        # is_player default is False
+        self.is_player = is_player
 
         # AI default is FighterAIGeneric()
         # if AI is None: self.AI = FighterAIGeneric()
         # else: self.AI = AI
         self.AI = AI
 
-        if battleShellDict is None:
-            self.battleShellDict = {
-                # Autorun on start of playerTurnMove Shell
+        if interface_shell_dict is None:
+            self.interface_shell_dict = {
+                # Autorun on start of player_move Shell
                 'moveCMD': ['first_time']
             }
         else:
-            self.battleShellDict = battleShellDict
+            self.interface_shell_dict = interface_shell_dict
 
         logger.debug(f'Created {self!r}')
 
@@ -187,9 +191,9 @@ class Fighter:
                     repr(x) for x in (
                         self.name,
                         self.stats,
-                        self.skills, self.moveTypes,
+                        self.skills, self.movetypes,
                         self.moves, self.counters,
-                        self.inventory, self.isPlayer
+                        self.inventory, self.is_player
                     )
                 ]
             )
@@ -205,162 +209,324 @@ class Fighter:
     @name.setter
     def name(self, name):
         self._name = name
-        self._decoloredName = format_color(name, no_color=True)
+        self._name_decolored = format_color(name, no_color=True)
 
     @property
-    def decoloredName(self):
-        return self._decoloredName
+    def name_decolored(self):
+        return self._name_decolored
 
-    @decoloredName.setter
-    def decoloredName(self, name):
+    @name_decolored.setter
+    def name_decolored(self, name):
         raise AttributeError(
             'This attribute cannot be changed directly; use self.name')
 
-    @staticmethod
-    def get_move_info_default(move):
-        """Return an informational string about a move using `ALL_STAT_INFOS`.
+    def apply_values(self, values, *, require_sufficiency=False):
+        """Apply a dictionary of values onto Fighter.
 
-        The description will be formatted with an environment containing:
-            move: The instance of Move that the description is in.
-            *ALL_STAT_INFOS: All StatInfo objects specified in
-            `src/engine/data/fighter_stats.py`.
-        It will also format color placeholders using `format_color()`.
-
-        """
-        namespace = fighter_stats.ALL_STAT_INFOS.copy()
-        namespace['move'] = move
-        return format_color(move['description'], namespace=namespace)
-
-    def get_move_info(self, move):
-        """Return an informational string about a move using a Fighter.
-
-        The description will be formatted with an environment containing:
-            move: The instance of Move that the description is in.
-            *self.stats: All Stat objects the Fighter has.
-        It will also format color placeholders using `format_color()`.
-
-        """
-        namespace = {k: v.value for k, v in self.stats.items()}
-        namespace['move'] = move
-        return format_color(move['description'], namespace=namespace)
-
-    def updateStatusEffectsDuration(self):
-        """Update all durations and remove completed status effects.
+        Args:
+            values (Dict[str, Union[int, None]]): A dictionary of values.
+                Dictionaries provided by `Fighter.gen_values`
+                or `Fighter.gen_costs` will work with this.
+            require_sufficiency (bool): If True, will return BoolDetailed
+                if a given value makes its stat go below 0. Otherwise,
+                simply applies the value onto stat.
+                Note that the new stat is clamped to the Stat's bound
+                by the property which happens only after checking
+                that there is sufficient stat available, so if a Stat has a
+                lower bound above 0 but the value would set the stat below 0
+                ignoring that bound, that is considered insufficient.
 
         Returns:
-            list: A list of wearoff messages.
+            dict: A dictionary of the new stat values.
+            BoolDetailed: Failed to apply stats.
+                Has a value of False and the description attribute contains
+                (int_short, value, new_stat), where:
+                    int_short: The internal short name of the stat at issue.
+                    value: The cost being applied onto stat.
+                    new_stat: The result of applying cost onto the stat,
+                        which should be negative.
 
         """
-        effects = self.status_effects
-        messages = []
-        i = 0
-        while i < len(effects):
-            if effects[i]['duration'] <= 0:
-                if 'wearoffMessage' in effects[i]:
-                    messages.append((effects[i], 'wearoffMessage'))
-                del effects[i]
+        logger.debug(f'{self.name_decolored} is receiving values {values}')
+
+        # Take note of old stats for logging
+        old_stats_str = ', '.join(
+            [f'{k}: {v.value}' for k, v in self.stats.items()])
+
+        new_stats = {}
+
+        for stat, value in values.items():
+            stat_value = getattr(self, stat, None)
+
+            if stat_value is None:
+                # This stat doesn't exist
+                continue
+
+            new_stat = stat_value
+            if value is not None:
+                new_stat += value
+
+            if require_sufficiency and new_stat < 0:
+                return BoolDetailed(
+                    False, 'lowStat', (stat, value, new_stat))
             else:
-                effects[i]['duration'] -= 1
-                i += 1
+                new_stats[stat] = new_stat
 
-        return messages
+        # Applies new_stats onto Fighter
+        for stat, new_stat in new_stats.items():
+            setattr(self, stat, new_stat)
 
-    def applyStatusEffectsValues(self, changeRandNum=True):
-        """Apply status effect values."""
-        messages = []
-        for effect in self.status_effects:
-            for stat, stat_info in self.stats.items():
-                key = f'{stat}Value'
-                if key in effect and hasattr(self, stat):
-                    statConstant = stat_info.int_full
-                    value = Bound.call_random(effect[key])
-                    value *= (
-                        self.battle_env.base_values_multiplier_percent / 100
-                    )
-                    value *= getattr(self.battle_env,
-                        f'base_value_{statConstant}_multiplier_percent'
-                    ) / 100
-                    if changeRandNum and isinstance(effect[key], Bound):
-                        effect[key].randNum = value
-                    setattr(self, stat, getattr(self, stat) + int(value))
-            if 'applyMessage' in effect:
-                messages.append((effect, 'applyMessage'))
-        return messages
+        new_stats_str = ', '.join(
+            [f'{k}: {v.value}' for k, v in self.stats.items()])
+        logger.debug(f"{self.name_decolored} changed stats "
+                     f'from:\n{old_stats_str}\n'
+                     f'to {new_stats_str}')
 
-    def printStatusEffectsMessages(self, messages, printDelay=0):
-        for effect, message in messages:
-            self.printStatusEffect(effect, message, end=None)
-            util.pause(printDelay)
-
-    def updateStats(self, stats=None):
-        """Calls self.updateStat for each stat the Fighter has."""
-        if stats is None:
-            stats = self.stats
-        for stat in stats:
-            # Update stat
-            if not hasattr(self, stat):
-                raise ValueError(f'No property exists for {stat} in '
-                                 f'{self.decoloredName} (Stats: {stats})')
-            self.updateStat(stat)
-
-    def updateStat(self, stat):
-        value = getattr(self, f'{stat}_rate')
-
-        value *= getattr(self.battle_env, f'{stat}_rate_percent') / 100
-
-        value *= self.battle_env.regen_rate_percent / 100
-
-        value = round(value)
-
-        setattr(self, stat, getattr(self, stat) + value)
-
-    def printMove(self, sender, move, message='moveMessage'):
-        """Formats a move's message and prints it.
-
-        This method should be called by the target.
-
-        An environment is provided to be used for formatting:
-            sender: The Fighter sending the move.
-            target: The Fighter receiving the move.
-            move: The Move being used.
-            *self.stats: The target's stats.
-        There are other variables available but are not intended for use:
-            cls: The Fighter class.
-            message: The message that was extracted from `move`.
-
-        """
-        namespace = {k: v for k, v in self.stats.items()}
-        namespace['sender'] = sender
-        namespace['target'] = self
-        namespace['move'] = move
-        print_color(move[message], namespace=namespace)
-
-    def printStatusEffect(self, effect, message='applyMessage', **kwargs):
-        """Formats a status effect's message and prints it.
-
-        An environment is provided to be used for formatting:
-            self: The Fighter receiving the effect.
-            effect: The StatusEffect being applied.
-            hp, st, mp: The respective StatInfo objects.
-        If the status effect has a *Value, it will be available
-        for formatting.
-        There are other variables available but are not intended for use:
-            message: The message that was extracted from `move`.
-
-        """
-        if message in effect:
-            namespace = {k: v for k, v in self.stats.items()}
-            namespace['self'] = self
-            namespace['effect'] = effect
-            for stat in self.stats:
-                value = f'{stat}Value'
-                if value in effect:
-                    namespace[value] = util.num(float(effect[value]))
-            print_color(effect[message], namespace=namespace, **kwargs)
+        return new_stats
 
     @staticmethod
-    def findDict(objects, values,
-                 exactSearch=True, detailedFail=False):
+    def available_combination_in_move(
+            move, requirement, objects,
+            membership_func=None, verbose=False):
+        """Returns True if objects has the requirements for a move.
+
+        When no combination is required or the move is NoneMove,
+        True is returned.
+        When the first available combination is found, it is returned.
+        If no combinations match, False is returned.
+        Note: Returned booleans are of type BoolDetailed.
+
+        Args:
+            move (Move): The move to check.
+            requirement:
+                The requirements key from move to check in `objects`.
+            objects:
+                The container of prerequisites.
+            membership_func (Optional[Callable]): The function to use to
+                determine if an object in `objects` matches the requirement.
+                Takes the objects and an object in a combination
+                from requirement.
+
+                def membership_func(objects, obj):
+                    ...
+
+                If None, will use `obj in objects`.
+            verbose (bool): For moves with one combination of requirements, if
+                items are missing, show them in the BoolDetailed description.
+
+        Returns:
+            BoolDetailed:
+            Tuple[BoolDetailed, List]: verbose is True and there is only
+                one combination of requirements, so a tuple is returned
+                with the BoolDetailed and a list of the objects that were not
+                in `objects`, if there were any.
+            Tuple[BoolDetailed, None]: verbose is True but there is more than
+                one combination of requirements, so no missing objects are
+                returned. This could be programmed in to map the missing
+                objects to each combination.
+
+        """
+        missing = []
+
+        if move['name'] == 'None':
+            result = BoolDetailed(
+                True, 'NONEMOVE',
+                'NoneMove was given.')
+            if verbose:
+                return result, missing
+            return result
+
+        if requirement in move:
+            requirements = move[requirement]
+            for combination in requirements:
+                for obj in combination:
+                    if membership_func is not None:
+                        if membership_func(objects, obj):
+                            continue  # Object matched, continue combination
+                    # No membership_func was given, test for membership
+                    elif obj in objects:
+                        continue  # Object matched, continue combination
+
+                    if verbose and len(requirements) == 1:
+                        # Store the missing objects for verbose
+                        missing.append(obj)
+                        continue
+                    else:
+                        break  # Skip combination, object missing
+                else:
+                    if verbose:
+                        return combination, missing
+                    return combination
+            else:
+                result = BoolDetailed(
+                    False, 'NOCOMBINATIONFOUND',
+                    'Did not find any matching combination.')
+                if verbose:
+                    return result, missing
+                return result
+        else:
+            result = BoolDetailed(
+                True, 'NOREQUIREMENTS',
+                'No requirements found.')
+            if verbose:
+                return result, missing
+            return result
+
+    def available_items_in_move(self, move, verbose=False):
+        """Returns True if Fighter has the Item requirements for a move.
+
+        Args:
+            move (Move): The move to check.
+            verbose (bool): Provide a list of missing requirements.
+
+        """
+        def membership_func(objects, itemDict):
+            search = self.find_item({'name': itemDict['name']})
+            if search is None:
+                # Item not found
+                return False
+            if 'count' in itemDict:
+                # Item needs to be depleted
+                if search['count'] >= itemDict['count']:
+                    # Item can be depleted
+                    return True
+                else:
+                    # Item requirement exceeds inventory quantity
+                    return False
+            else:
+                # Item doesn't need to be depleted
+                return True
+
+        return self.available_combination_in_move(
+            move, 'itemRequired',
+            self.skills, membership_func,
+            verbose=verbose
+        )
+
+    def available_move(
+            self, move, *,
+            ignore_movetypes=False, ignore_skills=False, ignore_items=False):
+        """Returns True if a move can be available in the Fighter's moveset.
+
+        The attributes that can influence this search are:
+            self.movetypes
+            self.skills
+            self.inventory
+
+        Args:
+            move (Move): The move to verify usability.
+            ignore_movetypes (bool): Ignore checking for MoveTypes.
+            ignore_skills (bool): Ignore checking for Skills.
+            ignore_items (bool): Ignore checking for Items.
+
+        """
+        # MoveType Check
+        if not ignore_movetypes \
+                and not self.available_movetypes_in_move(move):
+            return BoolDetailed(
+                False, 'MISSINGMOVETYPE',
+                'Missing required move types.')
+        # Skill Check
+        if not ignore_skills \
+                and not self.available_skills_in_move(move):
+            return BoolDetailed(
+                False, 'MISSINGSKILL',
+                'Missing required skills.')
+        # Item Check
+        if not ignore_items \
+                and not self.available_items_in_move(move):
+            return BoolDetailed(
+                False, 'MISSINGINVENTORY',
+                'Missing required items.')
+
+        return True
+
+    def available_moves(self, moves=None, **kwargs):
+        """Returns a list of available moves from a list of moves.
+
+        Args:
+            moves (Iterable[Moves]): Moves to filter.
+                If None, will use self.moves.
+
+        """
+        if moves is None:
+            moves = self.moves
+
+        available = []
+
+        for move in moves:
+            check = self.available_move(move, **kwargs)
+            if check:
+                available.append(move)
+            else:
+                logger.debug(f'{move} not available for {self.name_decolored}:'
+                             f' {check.description}')
+
+        return available
+
+    def available_movetypes_in_move(self, move, verbose=False):
+        """Returns True if Fighter has the MoveType requirements for a move.
+
+        Args:
+            move (Move): The move to check.
+            verbose (bool): Provide a list of any missing requirements.
+
+        """
+        return self.available_combination_in_move(
+            move, 'movetypes', self.movetypes, verbose=verbose)
+
+    def available_skills_in_move(self, move, verbose=False):
+        """Returns True if Fighter has the Skill requirements for a move.
+
+        Args:
+            move (Move): The move to check.
+            verbose (bool): Provide a list of missing requirements.
+
+        """
+        def membership_func(objects, combSkill):
+            return any(
+                selfSkill >= combSkill
+                if type(selfSkill) == type(combSkill) else False
+                for selfSkill in objects
+            )
+
+        return self.available_combination_in_move(
+            move, 'skillRequired',
+            self.skills, membership_func,
+            verbose=verbose
+        )
+
+    def find_counter(
+            self, values, *,
+            raiseIfFail=False, exactSearch=True, detailedFail=False):
+        """Find the first matching counter in the Fighter's counters.
+
+values - A dictionary of values to compare.
+raiseIfFail - If True, raise ValueError if a counter is not found.
+exactSearch - If True, match strings exactly instead of by membership.
+detailedFail - If True, return BoolDetailed when failing a search."""
+        counters = [
+            self.find_dict_Object({'name': i}) for i in self.counters.values()]
+        counter = self.find_dict(
+            counters, values,
+            exactSearch=exactSearch, detailedFail=detailedFail)
+
+        if raiseIfFail:
+            if counter is None:
+                raise ValueError(f'{self.name_decolored} failed to find '
+                                 f'a counter with values {values}')
+            elif isinstance(counter, BoolDetailed):
+                raise ValueError(f'{self.name_decolored} failed to find '
+                                 f'a counter with values {values}\n'
+                                 f'Details: {counter!r}')
+
+        logger.debug(f"{self.name_decolored}'s Counter search "
+                     f'returned "{counter}"')
+        return counter
+
+    @staticmethod
+    def find_dict(objects, values,
+                  exactSearch=True, detailedFail=False):
         """Find the first matching object in a list of objects by values.
 
         Args:
@@ -466,7 +632,7 @@ class Fighter:
                     False,
                     'NoResults',
                     'Did not find any results')
-            return None
+            return
         if len_res > 1:
             # Ran through objects; found too many results
             if detailedFail:
@@ -474,11 +640,11 @@ class Fighter:
                     False,
                     'TooManyResults',
                     f'Found {len_res} results')
-            return None
+            return
 
-    class findDict_Object:
+    class find_dict_Object:
         """Convert non-move like objects into move-like objects
-        that supports being searched by findDict."""
+        that supports being searched by find_dict."""
 
         def __init__(self, values):
             self.values = values
@@ -506,8 +672,8 @@ class Fighter:
         def __contains__(self, key):
             return key in self.values
 
-    def findItem(self, values, *,
-                 raiseIfFail=False, exactSearch=True, detailedFail=False):
+    def find_item(self, values, *,
+                  raiseIfFail=False, exactSearch=True, detailedFail=False):
         """Find the first matching item in the Fighter's inventory.
 
         Args:
@@ -517,29 +683,27 @@ class Fighter:
             exactSearch (bool):
 
         """
-        item = self.findDict(
+        item = self.find_dict(
             self.inventory, values,
             exactSearch=exactSearch, detailedFail=detailedFail)
 
         if raiseIfFail:
             if item is None:
-                raise ValueError(
-                    f'{self} failed to find an item with values {values}')
+                raise ValueError(f'{self.name_decolored} failed to find '
+                                 f'an item with values {values}')
             elif isinstance(item, BoolDetailed):
-                raise ValueError(
-                    f'{self} failed to find an item with values {values}\n'
-                    f'Details: {item!r}')
+                raise ValueError(f'{self.name_decolored} failed to find '
+                                 f'an item with values {values}\n'
+                                 f'Details: {item!r}')
 
-        logger.debug(f"{self.decoloredName}'s Item search "
+        logger.debug(f"{self.name_decolored}'s Item search "
                      f'returned "{item}"')
         return item
 
-    def findMove(
+    def find_move(
             self, values: dict, *,
             raiseIfFail=False, exactSearch=True, detailedFail=False,
-            showUnsatisfactories=False, **kwargs) -> \
-                Union[None, Move, BoolDetailed,
-                      Tuple[Optional[Move], List[BoolDetailed]]]:
+            showUnsatisfactories=False, **kwargs):
         """Find the first matching move in the Fighter's moves.
 
         Args:
@@ -551,7 +715,7 @@ class Fighter:
                 result and a list of BoolDetailed objects describing
                 unsatisfactories.
                 This should only be True when an ignore* keyword argument is
-                passed to availableMoves(), and will raise a ValueError
+                passed to available_moves(), and will raise a ValueError
                 if it isn't.
 
         Returns:
@@ -575,22 +739,22 @@ class Fighter:
             else:
                 raise ValueError(
                     'showUnsatisfactories is True but no ignore* keyword '
-                    f'argument was passed into findMove ({kwargs!r})'
+                    f'argument was passed into find_move ({kwargs!r})'
                 )
 
         # Search for move
-        move = self.findDict(
-            self.availableMoves(**kwargs), values,
+        move = self.find_dict(
+            self.available_moves(**kwargs), values,
             exactSearch=exactSearch, detailedFail=detailedFail)
 
         if raiseIfFail:
             if move is None:
-                raise ValueError(
-                    f'{self} failed to find a move with values {values}')
+                raise ValueError(f'{self.name_decolored} failed to find a move'
+                                 f' with values {values}')
             elif isinstance(move, BoolDetailed):
-                raise ValueError(
-                    f'{self} failed to find a move with values {values}\n'
-                    f'Details: {move!r}')
+                raise ValueError(f'{self.name_decolored} failed to find a move'
+                                 f' with values {values}\n'
+                                 f'Details: {move!r}')
 
         if showUnsatisfactories:
             unsatisfactories = []
@@ -604,7 +768,7 @@ class Fighter:
                 return f'{length} {req_name} requirement{plur} not satisfied'
 
             # Get search with all requirements
-            MoveTypeReq = self.availableMoveCombinationMoveType(
+            MoveTypeReq = self.available_movetypes_in_move(
                 move, verbose=showUnsatisfactories)
             if MoveTypeReq[1]:
                 unsatisfactories.append(BoolDetailed(
@@ -613,7 +777,7 @@ class Fighter:
                     req_plural(MoveTypeReq, 'MoveType'),
                     MoveTypeReq[1]
                 ))
-            SkillReq = self.availableMoveCombinationSkill(
+            SkillReq = self.available_skills_in_move(
                 move, verbose=showUnsatisfactories)
             if SkillReq[1]:
                 unsatisfactories.append(BoolDetailed(
@@ -622,7 +786,7 @@ class Fighter:
                     req_plural(SkillReq, 'Skill'),
                     SkillReq[1]
                 ))
-            InventoryReq = self.availableMoveCombinationInventory(
+            InventoryReq = self.available_items_in_move(
                 move, verbose=showUnsatisfactories)
             if InventoryReq[1]:
                 unsatisfactories.append(BoolDetailed(
@@ -632,168 +796,894 @@ class Fighter:
                     InventoryReq[1]
                 ))
 
-        logger.debug(f"{self.decoloredName}'s Move search "
+        logger.debug(f"{self.name_decolored}'s Move search "
                      f'returned "{move}"')
         if showUnsatisfactories:
             return move, unsatisfactories
         return move
 
-    def findCounter(
-            self, values, *,
-            raiseIfFail=False, exactSearch=True, detailedFail=False):
-        """Find the first matching counter in the Fighter's counters.
+    def get_move_info(self, move):
+        """Return an informational string about a move using a Fighter.
 
-values - A dictionary of values to compare.
-raiseIfFail - If True, raise ValueError if a counter is not found.
-exactSearch - If True, match strings exactly instead of by membership.
-detailedFail - If True, return BoolDetailed when failing a search."""
-        counters = [
-            self.findDict_Object({'name': i}) for i in self.counters.values()]
-        counter = self.findDict(
-            counters, values,
-            exactSearch=exactSearch, detailedFail=detailedFail)
-
-        if raiseIfFail:
-            if counter is None:
-                raise ValueError(
-                    f'{self} failed to find a counter with values {values}')
-            elif isinstance(counter, BoolDetailed):
-                raise ValueError(
-                    f'{self} failed to find a counter with values {values}\n'
-                    f'Details: {counter!r}')
-
-        logger.debug(f"{self.decoloredName}'s Counter search "
-                     f'returned "{counter}"')
-        return counter
-
-    def formatCounters(self):
-        """Return a string showing the available counters."""
-        return ', '.join([str(c) for c in self.counters.values()])
-
-    def formatMoves(self, **kwargs):
-        """Return a string showing the available moves."""
-        return ', '.join([str(move) for move in self.availableMoves(**kwargs)])
-
-    def moveCost(self, move, stat, failMessage):
-        """If possible, apply costs onto Fighter and return True."""
-        if move['name'] == 'None':
-            return None
-        # If stat cost in move exists
-        if f'{stat}Cost' in move:
-            # If Fighter can pay stat cost
-            if getattr(self, stat) \
-                    + self.genCost(move, stat, 'normal') >= 0:
-                setattr(self, stat, getattr(self, stat)
-                        + round(float(move[f'{stat}Cost'])))
-                return True
-            else:
-                # Print not enough stat message
-                stat_obj = self.stats[stat]
-                namespace = {
-                    'self': self,
-                    'move': move,
-                    'int_short': stat_obj.int_short,
-                    'int_full': stat_obj.int_full,
-                    'ext_short': stat_obj.ext_short,
-                    'ext_full': stat_obj.ext_full
-                }
-                print_color(failMessage, namespace=namespace)
-                return False
-        # Stat cost doesn't exist: return None
-        return None
-
-    def useMoveItems(self, move_or_combination=None, return_string=True):
-        """Find the combination of items to be used, and subtract them from
-        the Fighter's inventory. Will fail if no combination
-        was found that worked.
-
-        Args:
-            move_or_combination (Union[Move, Iterable[Item]]):
-                Either a combination of items to use, or a move
-                to gather requirements from.
-            return_string (bool): If True, will return a string of
-                items that were used and their new count.
-
-        Returns:
-            None
-            str: A string of items used, if `return_string` is True.
+        The description will be formatted with an environment containing:
+            move: The instance of Move that the description is in.
+            *self.stats: All Stat objects the Fighter has.
+        It will also format color placeholders using `format_color()`.
 
         """
-        if isinstance(move_or_combination, Move):
-            combination = self.availableMoveCombinationInventory(
-                move_or_combination
-            )
+        namespace = {k: v.value for k, v in self.stats.items()}
+        namespace['move'] = move
+        return format_color(move['description'], namespace=namespace)
+
+    @staticmethod
+    def get_move_info_default(move):
+        """Return an informational string about a move using `ALL_STAT_INFOS`.
+
+        The description will be formatted with an environment containing:
+            move: The instance of Move that the description is in.
+            *ALL_STAT_INFOS: All StatInfo objects specified in
+            `src/engine/data/fighter_stats.py`.
+        It will also format color placeholders using `format_color()`.
+
+        """
+        namespace = fighter_stats.ALL_STAT_INFOS.copy()
+        namespace['move'] = move
+        return format_color(move['description'], namespace=namespace)
+
+    # Value Generators
+    def gen_value(self, move, stat):
+        """Generate a Value from a move.
+
+        If the move is missing the stat, returns None.
+
+        Value format: {stat}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str): The stat value that is being generated/extracted.
+
+        Returns:
+            int: The generated/extracted value.
+            None: The stat could not be found.
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+        statName = stat + 'Value'
+        constantName = self.stats[stat].int_full
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= getattr(
+            self.battle_env,
+            f'base_value_{constantName}_multiplier_percent',
+            100
+        ) / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_values(self, move):
+        """Generate Values for every stat in a move and return a dictionary
+        of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract values from.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_value(move, stat)
+
+        return values
+
+    # Cost Generators
+    def gen_cost(self, move, stat, case='normal'):
+        """Generate a Cost from a move.
+
+        Cost format: {stat}Cost
+
+        Args:
+            move (Move): The move to generate/extract the cost from.
+            stat (str): The stat cost that is being generated/extracted.
+            case (str): The situation that dictates what cost to use.
+                normal: The standard "{stat}Cost".
+                failure: When a move fails, this situation requires
+                    "failure{stat}Cost".
+
+        """
+        cases = ('normal', 'failure')
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+        if case not in cases:
+            raise ValueError(
+                f'{case} is not a valid situation '
+                f"({', '.join([repr(c) for c in cases])})")
+
+        statConstant = self.stats[stat].int_full
+
+        # Parse case into statName
+        if case == 'normal':
+            statName = stat + 'Cost'
+        elif case == 'failure':
+            statName = 'failure' + stat.upper() + 'Cost'
         else:
-            combination = move_or_combination
+            raise RuntimeError(
+                f'Could not parse case {case!r}, possibly no switch case')
 
-        # Return detailed booleans if that was given
-        if isinstance(combination, BoolDetailed):
-            return combination
+        if statName not in move:
+            return
 
-        if return_string:
-            strings = []
+        cost = Bound.call_random(move[statName])
 
-        for itemDict in combination:
-            invItem = self.findItem({'name': itemDict['name']})
+        cost *= self.battle_env.base_energies_cost_multiplier_percent / 100
+        cost *= getattr(
+            self.battle_env,
+            f'base_energy_cost_{statConstant}_multiplier_percent',
+            100
+        ) / 100
 
-            # If required, find item in inventory and subtract from it
-            if 'count' in itemDict:
-                invItem['count'] -= itemDict['count']
+        cost = round(cost)
 
-            # Make sure item count is not negative
-            if invItem['count'] < 0:
-                raise RuntimeError(f'Item {invItem} count '
-                                   f"has gone negative: {invItem['count']}")
+        return cost
 
-            # Else if item count is 0, delete it from inventory
-            elif invItem['count'] == 0:
-                index = self.inventory.index(invItem)
-                del self.inventory[index]
+    def gen_costs(self, move, case='normal'):
+        """Generate Costs for every stat in a move and return a dictionary
+        of the generated costs.
 
-            # Conditionally print out the item used
-            if return_string:
-                name = invItem['name']
-                if 'count' in itemDict:
-                    used = itemDict.get('count', 0)
-                    newCount = invItem['count']
-                    strings.append(
-                        format_color(
-                            f'{used:,} {name}{util.plural(used)} used '
-                            f'({newCount:,} left)'
-                        )
-                    )
-                else:
-                    strings.append(format_color(f'{name} used'))
+        If the move is missing a stat, that key will have a value of None.
 
-        if return_string:
-            return '\n'.join(strings)
+        Args:
+            move (Move): The move to generate/extract costs from.
+            case (str): The situation that dictates what cost to use.
 
-    def playerTurnMove(self, target, cmdqueue=None):
-        """Obtains a move from the player."""
-        logger.debug(f"{self.decoloredName} is moving")
-        if cmdqueue is None:
-            cmdqueue = [self.battleShellDict['moveCMD']]
-        namespace = dict()
+        Returns:
+            Dict[str, Union[int, None]]
 
-        # Get user interaction and use the changes in `namespace`
-        # to know which move to use next
-        interface.FighterBattleMainShell(
-            self, target, namespace, cmdqueue
-        ).cmdloop()
-        print()
+        """
+        costs = dict()
+        for stat in self.stats:
+            costs[stat] = self.gen_cost(move, stat, case)
 
-        self.battleShellDict['moveCMD'] = namespace['newMoveCMD']
+        return costs
 
-        return namespace['shell_result']
+    def gen_chance(self, move, chanceType):
+        """Generate a Chance from a move.
 
-    def playerCounter(self, move, sender):
+        Args:
+            move (Move): The move to extract chance from.
+            chanceType (str): The type of the chance to extract.
+                Allowed chances:
+                    'critical'
+                    'failure'
+                    'speed'
+                    <any counter name the Fighter has>
+
+        """
+        validChancesNonCounter = ['speed', 'failure', 'critical']
+        validChancesCounter = [counter for counter in self.all_counters]
+        validChances = validChancesNonCounter + validChancesCounter
+        if chanceType not in validChances:
+            raise ValueError(
+                f'{chanceType} is not a valid chance '
+                f"({', '.join([repr(s) for s in validChances])})")
+
+        chanceName = chanceType + 'Chance'
+
+        if chanceType == 'speed':
+            chance = 100 - move['speed']
+
+            chance = custom_divide(
+                chance, self.battle_env.base_speed_multiplier_percent / 100)
+
+            return chance
+
+        elif chanceType in validChancesNonCounter:
+            chance = Bound.call_random(move[chanceName])
+
+            chance *= getattr(
+                self.battle_env,
+                f'base_{chanceType}_chance_percent',
+                100
+            ) / 100
+
+            return chance
+
+        elif chanceType in validChancesCounter:
+            chanceConstant = self.all_counters[chanceType]
+
+            chance = Bound.call_random(move[chanceName])
+
+            chance *= getattr(
+                self.battle_env,
+                f'base_{chanceConstant}_chance_percent',
+                100
+            ) / 100
+
+            return chance
+
+        else:
+            raise RuntimeError(f'Failed to parse chanceType {chanceType}.')
+
+    # Critical Generators
+    def gen_critical_value(self, move, stat):
+        """Generate a Value from a move affected by its critical multiplier.
+
+        Value format: critical{stat.upper()}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str) The stat value that is being generated/extracted.
+
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+
+        statName = 'critical' + stat.upper() + 'Value'
+        statConstant = self.stats[stat].int_full
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= getattr(
+            self.battle_env,
+            f'base_value_{statConstant}_multiplier_percent',
+            100
+        ) / 100
+
+        value *= self.battle_env.base_critical_value_multiplier_percent / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_critical_values(self, move):
+        """Generate critical values for every stat in a move and
+        return a dictionary of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract critical values from.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_critical_value(move, stat)
+
+        return values
+
+    # Counter Generators
+    def gen_counter_value(self, move, stat, counter):
+        """Generate a Counter Value from a move.
+
+        Value format: {counter}{stat.upper()}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str) The stat value that is being generated/extracted.
+            counter (str): The counter used to defend against the move.
+
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+        if counter not in self.all_counters:
+            raise ValueError(
+                f'{counter!r} is not a Fighter counter '
+                f"({', '.join([repr(s) for s in self.all_counters])})")
+
+        statName = counter + stat.upper() + 'Value'
+        statConstant = self.stats[stat].int_full
+        counterConstant = self.all_counters[counter]
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= getattr(
+            self.battle_env,
+            f'base_value_{statConstant}_multiplier_percent',
+            100
+        ) / 100
+
+        value *= getattr(
+            self.battle_env,
+            f'base_{counterConstant}_values_multiplier_percent',
+            100
+        ) / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_counter_values(self, move, counter):
+        """Generate counter values for every stat in a move and
+        return a dictionary of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract counter values from.
+            counter (str): The counter used to defend against the move.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_counter_value(move, stat, counter)
+
+        return values
+
+    def gen_counter_fail_value(self, move, stat, counter):
+        """Generate a Counter Fail Value from a move.
+
+        Value format: {counter}Fail{stat.upper()}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str) The stat value that is being generated/extracted.
+            counter (str): The counter used to defend against the move.
+
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+        if counter not in self.all_counters:
+            raise ValueError(
+                f'{counter!r} is not a Fighter counter '
+                f"({', '.join([repr(s) for s in self.all_counters])})")
+
+        statName = counter + 'Fail' + stat.upper() + 'Value'
+        statConstant = self.stats[stat].int_full
+        counterConstant = self.all_counters[counter]
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= getattr(
+            self.battle_env,
+            f'base_value_{statConstant}_multiplier_percent',
+            100
+        ) / 100
+
+        value *= getattr(
+            self.battle_env,
+            f'base_{counterConstant}_fail_value_multiplier_percent',
+            100
+        ) / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_counter_fail_values(self, move, counter):
+        """Generate counter failure values for every stat in a move and
+        return a dictionary of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract counter values from.
+            counter (str): The counter used to defend against the move.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_counter_fail_value(move, stat, counter)
+
+        return values
+
+    def gen_counter_fail_critical_value(self, move, stat, counter):
+        """Generate a Counter Fail Value from a move affected by
+        its critical multiplier.
+
+        Value format: {counter}FailCritical{stat.upper()}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str) The stat value that is being generated/extracted.
+            counter (str): The counter used to defend against the move.
+
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+        if counter not in self.all_counters:
+            raise ValueError(
+                f'{counter!r} is not a Fighter counter '
+                f"({', '.join([repr(s) for s in self.all_counters])})")
+
+        statName = counter + 'FailCritical' + stat.upper() + 'Value'
+        statConstant = self.stats[stat].int_full
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= getattr(
+            self.battle_env,
+            f'base_value_{statConstant}_multiplier_percent',
+            100
+        ) / 100
+
+        value *= self.battle_env.base_critical_value_multiplier_percent / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_counter_fail_critical_values(self, move, counter):
+        """Generate critical failure values for every stat in a move and
+        return a dictionary of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract counter values from.
+            counter (str): The counter used to defend against the move.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_counter_fail_critical_value(
+                move, stat, counter)
+
+        return values
+
+    # Failure Generators
+    def gen_failure_value(self, move, stat):
+        """Generate a failure value from a move.
+
+        Value format: failure{stat.upper()}Value
+
+        Args:
+            move (Move): The move to generate/extract the value from.
+            stat (str) The stat value that is being generated/extracted.
+
+        """
+        if stat not in self.stats:
+            raise ValueError(
+                f'{stat} is not a Fighter stat '
+                f"({', '.join([repr(s) for s in self.stats])})")
+
+        statName = 'failure' + stat.upper() + 'Value'
+
+        if statName not in move:
+            return
+
+        value = Bound.call_random(move[statName])
+
+        value *= self.battle_env.base_values_multiplier_percent / 100
+        value *= self.battle_env.base_failure_multiplier_percent / 100
+
+        value = round(value)
+
+        return value
+
+    def gen_failure_values(self, move):
+        """Generate failure values for every stat in a move and
+        return a dictionary of the generated values.
+
+        If the move is missing a stat, that key will have a value of None.
+
+        Args:
+            move (Move): The move to generate/extract counter values from.
+
+        Returns:
+            Dict[str, Union[int, None]]
+
+        """
+        values = dict()
+        for stat in self.stats:
+            values[stat] = self.gen_failure_value(move, stat)
+
+        return values
+
+    def has_move(self, move, match_by_id=False):
+        """Check if the fighter has a move."""
+        if match_by_id:
+            return id(move) in (id(m) for m in self.moves)
+        return move in self.moves
+
+    def move(self, target, move=None,
+             do_not_send=False, must_have_move=True):
+        """Move against a fighter.
+
+        Args:
+            target (Fighter): The opposing fighter.
+            move (Optional[Move]): The move to use against target.
+                If None, will ask user/AI to pick a move.
+            do_not_send (bool): If True, move requirements are applied
+                but `target.move_receive` is not called. Helpful for using
+                custom code between this method and `target.move_receive`.
+            must_have_move (bool): If True, an error is raised if
+                `move`, whether passed into the method or returned by
+                the user/AI, does not exist within self.moves.
+
+        Returns:
+            None: self was unable to move.
+            dict: A dict containing:
+                    sender: The fighter sending the move.
+                    move: The move that was selected.
+                    costs: The costs of using the move.
+                This provides the information required to use
+                `target.move_receive` outside of this method if custom
+                code is being executed in the battle loop.
+
+        """
+        def send_move(move, sender_costs=None):
+            if not do_not_send:
+                logger.debug(f'{self.name_decolored} sent "{move}" '
+                             f'to {target.name_decolored}')
+                target.move_receive(
+                    move, sender=self, sender_costs=sender_costs)
+            else:
+                logger.debug(f'{self.name_decolored} spent prerequisites for '
+                             f'"{move}" but did not send '
+                             f'to {target.name_decolored}')
+
+        logger.debug(f'{self.name_decolored} is moving '
+                     f'against {target.name_decolored}')
+
+        # Don't move if an effect has noMove
+        for effect in self.status_effects:
+            if 'noMove' in effect:
+                self.print_status_effect(effect, None, 'noMove')
+                return
+
+        # If a move is not given, give control to AI/player
+        if not move:
+            if not self.is_player:
+                logger.debug(f"{self.name_decolored}'s AI {self.AI} "
+                             'is choosing a move')
+                move = self.AI.analyseMove(self, target)
+            else:
+                move = self.player_move(target)
+
+        logger.debug(f'{self.name_decolored} chose the move "{move}"')
+
+        # Enforce move requirement in the fighter
+        if must_have_move and not self.has_move(move):
+            raise ValueError(f'"{move}" does not exist in '
+                             f"{self.name_decolored}'s moves")
+
+        if move['name'] == 'None':
+            print_color(f'{self} did not move.')
+            send_move(move)
+            # Return used move and an empty dict showing no stats were used
+            return {
+                'sender': self,
+                'move': move,
+                'costs': {}
+            }
+
+        # Combinations available to use move
+        if not self.available_skills_in_move(move):
+            logger.debug(f'{self.name_decolored} failed to move; '
+                         'lack of skills')
+            print_color(f'{self} tried using {move} but did not'
+                        ' have the needed skills.')
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    target, move, self, info=('senderFail', 'missingSkills'))
+            return
+        itemRequirements = self.available_items_in_move(move)
+        if not itemRequirements:
+            logger.debug(f'{self.name_decolored} failed to move;'
+                         ' lack of items')
+            print_color(f'{self} tried using {move} but did not'
+                        ' have the needed items.')
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    target, move, self, info=('senderFail', 'missingItems'))
+            return
+
+        # Stat Costs
+        costs = self.gen_costs(move)
+        new_stats = self.apply_values(costs, require_sufficiency=True)
+        if isinstance(new_stats, BoolDetailed) and not new_stats:
+            # Insufficient stat available
+            stat, cost, new_stat = new_stats.description
+            self.print_insufficient_cost(move, stat, cost)
+            logger.debug(f'{self.name_decolored} failed to move; '
+                         f'lack of {stat}')
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    target, move, self, info=(
+                        'senderFail', 'lowStat', stat))
+            return
+
+        # Use any items and display the usage if Fighter is a player
+        items_used_str = self.use_item_requirements(
+            itemRequirements, return_string=self.is_player)
+        if isinstance(items_used_str, str):
+            print_color(items_used_str, end='\n\n')
+
+        # Finished, send move
+        send_move(move, costs)
+        return {
+            'sender': self,
+            'move': move,
+            'costs': costs
+        }
+
+    def move_receive(self, move, sender, sender_costs):
+        logger.debug(f'{self.name_decolored} is receiving "{move}" '
+                     f'from {sender.name_decolored}')
+
+        if move['name'] == 'None':
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=('noneMove',))
+            return
+
+        # If move fails by chance
+        if random.uniform(1, 100) <= self.gen_chance(move, 'failure'):
+            logger.debug(f'"{move}" failed against {self.name_decolored}')
+            if sender is not None:
+                logger.debug(f'{sender.name_decolored} is receiving '
+                             'failure values')
+                values = sender.gen_failure_values(move)
+                self.print_move(sender, move, values, sender_costs,
+                                'failureMessage')
+                sender.apply_values(values)
+
+                info = ('senderFail', 'chance')
+                # Since the move failed, do not receive effects from the move
+                # self.receive_status_effects_from_move(move, info, sender)
+
+                if not self.is_player:
+                    self.AI.analyse_move_receive(
+                        self, move, sender, info=info)
+                return
+        # If move counter is possible
+        if sender is not None \
+                and random.uniform(1, 100) <= self.gen_chance(move, 'speed'):
+            # Don't counter if an effect has noCounter
+            def status_effect_has_noCounter():
+                for effect in self.status_effects:
+                    if 'noCounter' in effect:
+                        logger.debug(f'{self.name_decolored} has noCounter '
+                                     f'status effect from "{effect}"')
+                        # Footnote 3
+                        self.print_status_effect(effect, None, 'noCounter')
+                        return True
+                return False
+
+            if status_effect_has_noCounter():
+                counter = 'none'
+            # TODO: Allow only certain counters based on move values,
+            # and also disable countering if self.counters is empty
+            elif not self.is_player:
+                logger.debug(f"{self.name_decolored}'s AI {self.AI} "
+                             f'is countering "{move}"')
+                counter = self.AI.analyseMoveCounter(self, move, sender)
+            else:
+                logger.debug(f"{self.name_decolored}'s player "
+                             f'is countering "{move}"')
+                counter = self.player_counter(move, sender)
+
+        # If move counter failed
+        else:
+            if sender is not None:
+                logger.debug(f'{self.name_decolored} cannot counter the move')
+            counter = False
+
+        logger.debug(f'{self.name_decolored} is using counter {counter!r}')
+
+        # Counter System
+        if counter == 'block':
+            self.move_receive_counter_block(move, sender, sender_costs)
+        elif counter == 'evade':
+            self.move_receive_counter_evade(move, sender, sender_costs)
+        elif counter == 'none':
+            self.move_receive_counter_none(move, sender, sender_costs)
+        elif counter is False:
+            self.move_receive_counter_false(move, sender, sender_costs)
+        else:
+            raise RuntimeError(
+                'During move_receive while countering, '
+                f'an unknown counter was given: {counter!r}')
+
+    def move_receive_counter_none(self, move, sender, sender_costs):
+        # If move is critical
+        if random.uniform(1, 100) <= self.gen_chance(move, 'critical'):
+            logger.debug(f'"{move}" against {self.name_decolored} '
+                         'is a critical')
+            values = self.gen_critical_values(move)
+            self.print_move(sender, move, values, sender_costs,
+                            'criticalMessage')
+            self.apply_values(values)
+            # Apply status effects
+            info = ('none', 'critical')
+            self.receive_status_effects_from_move(move, info, sender)
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+        else:
+            logger.debug(f'"{move}" against {self.name_decolored} is normal')
+            values = self.gen_values(move)
+            self.print_move(sender, move, values, sender_costs)
+            self.apply_values(values)
+
+            info = ('none', 'normal')
+            self.receive_status_effects_from_move(move, info, sender)
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+
+    def move_receive_counter_false(self, move, sender, sender_costs):
+        # If move is critical
+        if random.uniform(1, 100) <= self.gen_chance(move, 'critical'):
+            logger.debug(f'"{move}" against {self.name_decolored} '
+                         'is a fast critical')
+            values = self.gen_critical_values(move)
+            self.print_move(sender, move, values, sender_costs,
+                            'fastCriticalMessage')
+            self.apply_values(values)
+
+            info = ('fast', 'critical')
+            self.receive_status_effects_from_move(move, info, sender)
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+        else:
+            logger.debug(f'"{move}" against {self.name_decolored} is fast')
+            values = self.gen_values(move)
+            self.print_move(sender, move, values, sender_costs,
+                            'fastMessage')
+            self.apply_values(values)
+
+            info = ('fast', 'normal')
+            self.receive_status_effects_from_move(move, info, sender)
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+
+    def move_receive_counter_block(self, move, sender, sender_costs):
+        # If move is blocked
+        if random.uniform(1, 100) <= self.gen_chance(move, 'block'):
+            logger.debug(f'"{move}" against {self.name_decolored} is blocked')
+            values = self.gen_counter_values(move, 'block')
+            self.print_move(sender, move, values, sender_costs,
+                            'blockMessage')
+            self.apply_values(values)
+
+            info = ('block', 'success')
+            self.receive_status_effects_from_move(move, info, sender)
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+        else:
+            # If move is critical after failed block
+            if random.uniform(1, 100) <= self.gen_chance(move, 'critical'):
+                logger.debug(f'"{move}" against {self.name_decolored} '
+                             'is failed block critical')
+                values = self.gen_counter_fail_critical_values(move, 'block')
+                self.print_move(sender, move, values, sender_costs,
+                                'blockFailCriticalMessage')
+                self.apply_values(values)
+
+                info = ('block', 'critical')
+                self.receive_status_effects_from_move(move, info, sender)
+
+                if not self.is_player:
+                    self.AI.analyse_move_receive(
+                        self, move, sender, info=info)
+            else:
+                logger.debug(f'"{move}" against {self.name_decolored} '
+                             'is failed block')
+                values = self.gen_counter_fail_values(move, 'block')
+                self.print_move(sender, move, values, sender_costs,
+                                'blockFailMessage')
+                self.apply_values(values)
+
+                info = ('block', 'fail')
+                self.receive_status_effects_from_move(move, info, sender)
+
+                if not self.is_player:
+                    self.AI.analyse_move_receive(
+                        self, move, sender, info=info)
+
+    def move_receive_counter_evade(self, move, sender, sender_costs):
+        # If move is evaded
+        if random.uniform(1, 100) <= self.gen_chance(move, 'evade'):
+            logger.debug(f'"{move}" against {self.name_decolored} is evaded')
+            values = self.gen_counter_values(move, 'evade')
+            self.print_move(sender, move, values, sender_costs,
+                            'evadeMessage')
+            self.apply_values(values)
+
+            info = ('evade', 'success')
+            self.receive_status_effects_from_move(move, info, sender)
+
+            if not self.is_player:
+                self.AI.analyse_move_receive(
+                    self, move, sender, info=info)
+        else:
+            # If move is critical after failed evade
+            if random.uniform(1, 100) <= self.gen_chance(move, 'critical'):
+                logger.debug(f'"{move}" against {self.name_decolored} '
+                             'is failed evade critical')
+                values = self.gen_counter_fail_critical_values(move, 'evade')
+                self.print_move(sender, move, values, sender_costs,
+                                'evadeFailCriticalMessage')
+                self.apply_values(values)
+
+                info = ('evade', 'critical')
+                self.receive_status_effects_from_move(move, info, sender)
+
+                if not self.is_player:
+                    self.AI.analyse_move_receive(
+                        self, move, sender, info=info)
+            else:
+                logger.debug(f'"{move}" against {self.name_decolored} '
+                             'is failed evade')
+                values = self.gen_counter_fail_values(move, 'evade')
+                self.print_move(sender, move, values, sender_costs,
+                                'evadeFailMessage')
+                self.apply_values(values)
+
+                info = ('evade', 'critical')
+                self.receive_status_effects_from_move(move, info, sender)
+
+                if not self.is_player:
+                    self.AI.analyse_move_receive(
+                        self, move, sender, info=info)
+
+    def player_counter(self, move, sender):
         """Obtains a counter from the player.
 Note: No counter shell has been created so the placeholder interface code
 below is being used."""
         print_color(f'{INDENT}\
 {sender} is using {move}, but {self} is able to use a counter!')
 
-        countersMessage = self.formatCounters()
+        countersMessage = self.string_counters()
 
         prompt = (
             f'{INDENT}Counter to attempt performing '
@@ -811,7 +1701,7 @@ below is being used."""
                 )
                 continue
 
-            search = self.findCounter(
+            search = self.find_counter(
                 {'name': user_input},
                 exactSearch=False, detailedFail=True)
 
@@ -835,79 +1725,133 @@ below is being used."""
                 elif search.name == 'NoResults':
                     prompt = f'{INDENT}Did not find counter, type again: '
 
-    def move(self, target, move=None):
-        logger.debug(f'{self.decoloredName} is moving against {target}')
+    def player_move(self, target, cmdqueue=None):
+        """Obtains a move from the player."""
+        logger.debug(f"{self.name_decolored} is moving")
+        if cmdqueue is None:
+            cmdqueue = [self.interface_shell_dict['moveCMD']]
+        namespace = dict()
 
-        # Don't move if an effect has noMove
-        for effect in self.status_effects:
-            if 'noMove' in effect:
-                self.printStatusEffect(effect, 'noMove')
-                return
+        # Get user interaction and use the changes in `namespace`
+        # to know which move to use next
+        interface.FighterBattleMainShell(
+            self, target, namespace, cmdqueue
+        ).cmdloop()
+        print()
 
-        # If a move is not given, give control to AI/player
-        if not move:
-            if not self.isPlayer:
-                logger.debug(f"{self.decoloredName}'s AI {self.AI} "
-                             'is choosing a move')
-                move = self.AI.analyseMove(self, target)
+        self.interface_shell_dict['moveCMD'] = namespace['newMoveCMD']
+
+        return namespace['shell_result']
+
+    def print_insufficient_cost(self, move, stat, cost):
+        """Print an insufficient cost message for a stat.
+
+        If the insufficientStatMessage key is available in the move,
+        that message is used. Otherwise, uses a generic message.
+
+        """
+        stat_obj = self.stats[stat]
+        namespace = {
+            'self': self,
+            'move': move,
+            'cost': cost,
+            'int_short': stat_obj.int_short,
+            'int_full': stat_obj.int_full,
+            'ext_short': stat_obj.ext_short,
+            'ext_full': stat_obj.ext_full
+        }
+
+        message = move.values.get('insufficientStatMessage')
+
+        if message is None:
+            message = ('{self} tried using {move} but the {ext_full} cost '
+                       'was {-cost}.')
+
+        print_color(message, namespace=namespace)
+
+    def print_move(self, sender, move, values=None, costs=None,
+                   message='moveMessage', **kwargs):
+        """Formats a move's message and prints it.
+
+        This method should be called by the target.
+
+        An environment is provided to be used for formatting:
+            sender: The Fighter sending the move.
+            target: The Fighter receiving the move.
+            move: The Move being used.
+            **self.stats: The target's Stat objects referenced using their
+                `int_short`.
+            **{stat}Value: The values of the move applied to target.
+            **{stat}Cost: The costs of the move for sender.
+
+        Args:
+            sender (Fighter): The sender of the move.
+            move (Move): The move being applied onto self.
+            values (Optional[Dict[str, int]]): The values that `move`
+            applied onto the Fighter.
+            If not supplied, defaults to 0 for each {stat}Value.
+            costs (Optional[Dict[str, int]]): The costs that sender applied
+                to themselves.
+                If not supplied, defaults to 0 for each {stat}Cost.
+            message (str): The message in Move to print.
+            **kwargs: Keyword arguments to pass into `print_color`.
+
+        """
+        namespace = {'sender': sender, 'target': self, 'move': move}
+
+        for stat, stat_obj in self.stats.items():
+            namespace[stat] = stat_obj
+
+            value = f'{stat}Value'
+            cost = f'{stat}Cost'
+            if values is not None:
+                namespace[value] = values.get(stat, 0)
             else:
-                move = self.playerTurnMove(target)
+                namespace[value] = 0
+            if costs is not None:
+                namespace[cost] = costs.get(stat, 0)
+            else:
+                namespace[cost] = 0
 
-        logger.debug(f'{self.decoloredName} chose the move "{move}"')
+        print_color(move[message], namespace=namespace, **kwargs)
 
-        if move['name'] == 'None':
-            print_color(f'{self} did not move.')
-            logger.debug(f'{self.decoloredName} sent "{move}" to {target}')
-            target.moveReceive(move, sender=self)
-            return
+    def print_status_effect(self, effect, values=None, message='applyMessage',
+                            **kwargs):
+        """Formats a status effect's message and prints it.
 
-        # Combinations available to use move
-        if not self.availableMoveCombinationSkill(move):
-            logger.debug(f'{self.decoloredName} failed to move; '
-                         'lack of skills')
-            print_color(f'\
-{self} tried using {move} but did not have the needed skills.')
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    target, move, self, info=('senderFail', 'missingSkills'))
-            return
-        itemRequirements = self.availableMoveCombinationInventory(move)
-        if not itemRequirements:
-            logger.debug(f'{self.decoloredName} failed to move; '
-                         'lack of items')
-            print_color(f'\
-{self} tried using {move} but did not have the needed items.')
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    target, move, self, info=('senderFail', 'missingItems'))
-            return
+        An environment is provided to be used for formatting:
+            self: The Fighter receiving the effect.
+            effect: The StatusEffect being applied.
+            **self.stats: The Fighter's Stat objects.
+            **{stat}Value: The value applied to each stat by the status effect.
 
-        # Stat Costs
-        for int_short in self.stats:
-            # If move failed due to low stats, stop
-            if self.moveCost(
-                    move, int_short, '{self} tried using {move} '
-                    'but the {ext_full} cost was {move:{int_short}C neg}.') \
-                    is False:
-                logger.debug(f'{self.decoloredName} failed to move; '
-                             'lack of {int_short}')
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        target, move, self, info=(
-                            'senderFail', 'lowStats', int_short))
-                return
+        Args:
+            effect (StatusEffect): The status effect using this.
+            message (str): The message in StatusEffect to print.
+            values (Optional[Dict[str, int]]): The values that `effect`
+                applied onto the Fighter. If not supplied, defaults to
+                0 for each {stat}Value.
+            **kwargs: Keyword arguments to pass into `print_color`.
+        """
+        if message in effect:
+            namespace = {'self': self, 'effect': effect}
+            for stat, stat_obj in self.stats.items():
+                namespace[stat] = stat_obj
 
-        # Use any items and display the usage if Fighter is a player
-        items_used_str = self.useMoveItems(
-            itemRequirements, return_string=self.isPlayer)
-        if isinstance(items_used_str, str):
-            print_color(items_used_str, end='\n\n')
+                value = f'{stat}Value'
+                if values is not None:
+                    namespace[value] = values.get(stat, 0)
+                else:
+                    namespace[value] = 0
 
-        # Finished, send move
-        logger.debug(f'{self.decoloredName} sent "{move}" to {target}')
-        target.moveReceive(move, sender=self)
+            print_color(effect[message], namespace=namespace, **kwargs)
 
-    def receiveEffect(self, effect, stackDuration=True):
+    def print_status_effect_messages(self, messages, print_delay=0):
+        for effect, message, values in messages:
+            self.print_status_effect(effect, values, message, end=None)
+            util.pause(print_delay)
+
+    def receive_status_effect(self, effect, stackDuration=True):
         """Receive a StatusEffect.
 
         If the name of `effect` matches the name of another effect,
@@ -932,10 +1876,10 @@ below is being used."""
         if 'receiveMessage' in effect and self.hp > 0:
             # Print receive message so long as the fighter has enough health
             # Footnote 3
-            self.printStatusEffect(effect, 'receiveMessage')
+            self.print_status_effect(effect, None, 'receiveMessage')
 
-    def moveReceiveEffects(self, move, info=None, sender=None):
-        logger.debug(f'{self} receiving effects from {move}')
+    def receive_status_effects_from_move(self, move, info=None, sender=None):
+        logger.debug(f'{self.name_decolored} receiving effects from {move}')
 
         def apply_effect(target, effect):
             logger.debug(f'Applying effect {effect}')
@@ -947,7 +1891,7 @@ below is being used."""
                     / 100
                 )
                 if result:
-                    target.receiveEffect(effect.copy())
+                    target.receive_status_effect(effect.copy())
                 return result
 
             def check_uncountered():
@@ -986,7 +1930,7 @@ below is being used."""
                 else:
                     # Counters
                     situation_found = False
-                    for counter in self.allCounters:
+                    for counter in self.all_counters:
                         if chance[1] == counter and counter in info:
                             # If counter was attempted
                             logger.debug(f'{counter} attempted chance '
@@ -1032,862 +1976,160 @@ below is being used."""
                 elif effect['target'] == 'sender' and sender is not None:
                     apply_effect(sender, effect)
 
-    def moveReceive(self, move, sender=None):
-        logger.debug(f'{self.decoloredName} is receiving "{move}" '
-                     f'from {sender.decoloredName}')
-        if move['name'] == 'None':
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=('noneMove',))
-            return
-        # If move fails by chance
-        if random.uniform(1, 100) <= self.genChance(move, 'failure'):
-            logger.debug(f'"{move}" failed against {self.decoloredName}')
-            if sender is not None:
-                logger.debug(f'{sender.decoloredName} is receiving '
-                             'failure values')
-                sender.genFailureValues(move)
-                self.printMove(sender, move, 'failureMessage')
-                sender._moveReceive(move, values='failure')
+    def string_counters(self):
+        """Return a string showing the available counters."""
+        return ', '.join([str(c) for c in self.counters.values()])
 
-                info = ('senderFail', 'chance')
-                self.moveReceiveEffects(move, info, sender)
+    def string_moves(self, **kwargs):
+        """Return a string showing the available moves."""
+        return ', '.join(
+            [str(move) for move in self.available_moves(**kwargs)]
+        )
 
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        self, move, sender, info=info)
-                return
-        # If move counter is possible
-        if sender is not None \
-                and random.uniform(1, 100) <= self.genChance(move, 'speed'):
-            # Don't counter if an effect has noCounter
-            def hasNoCounterStatusEffect():
-                for effect in self.status_effects:
-                    if 'noCounter' in effect:
-                        logger.debug(f'{self.decoloredName} has noCounter '
-                                     f'status effect from "{effect}"')
-                        # Footnote 3
-                        self.printStatusEffect(effect, 'noCounter')
-                        return True
-                return False
+    def update_stat(self, stat):
+        value = getattr(self, f'{stat}_rate')
 
-            if hasNoCounterStatusEffect():
-                counter = 'none'
-            elif not self.isPlayer:
-                logger.debug(f"{self.decoloredName}'s AI {self.AI} "
-                             f'is countering "{move}"')
-                counter = self.AI.analyseMoveCounter(self, move, sender)
-            else:
-                logger.debug(f"{self.decoloredName}'s player "
-                             f'is countering "{move}"')
-                counter = self.playerCounter(move, sender)
+        value *= getattr(self.battle_env, f'{stat}_rate_percent', 100) / 100
 
-        # If move counter failed
-        else:
-            if sender is not None:
-                logger.debug(f'{self.decoloredName} cannot counter the move')
-            counter = False
+        value *= self.battle_env.regen_rate_percent / 100
 
-        logger.debug(f'{self.decoloredName} is using counter {counter!r}')
+        value = round(value)
 
-        # Counter System
-        if counter == 'block':
-            self.moveReceiveCounterBlock(move, sender)
-        elif counter == 'evade':
-            self.moveReceiveCounterEvade(move, sender)
-        elif counter == 'none':
-            self.moveReceiveCounterNone(move, sender)
-        elif counter is False:
-            self.moveReceiveCounterFalse(move, sender)
-        else:
-            raise RuntimeError(
-                'During moveReceive while countering, '
-                f'an unknown counter was given: {counter!r}')
+        setattr(self, stat, getattr(self, stat) + value)
 
-    def moveReceiveCounterNone(self, move, sender):
-        # If move is critical
-        if random.uniform(1, 100) <= self.genChance(move, 'critical'):
-            logger.debug(f'"{move}" against {self.decoloredName} '
-                         'is a critical')
-            self.genValues(move)
-            self.genCriticalValues(move)
-            self.printMove(sender, move, 'criticalMessage')
-            self._moveReceive(move, values='critical')
-            # Apply status effects
-            info = ('none', 'critical')
-            self.moveReceiveEffects(move, info, sender)
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-        else:
-            logger.debug(f'"{move}" against {self.decoloredName} is normal')
-            self.genValues(move)
-            self.printMove(sender, move)
-            self._moveReceive(move, values='none')
+    def update_stats(self, stats=None):
+        """Calls self.update_stat for each stat the Fighter has."""
+        if stats is None:
+            stats = self.stats
+        for stat in stats:
+            # Update stat
+            if not hasattr(self, stat):
+                raise ValueError(f'No property exists for {stat} in '
+                                 f'{self.name_decolored} (Stats: {stats})')
+            self.update_stat(stat)
 
-            info = ('none', 'normal')
-            self.moveReceiveEffects(move, info, sender)
-
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-
-    def moveReceiveCounterFalse(self, move, sender):
-        # If move is critical
-        if random.uniform(1, 100) <= self.genChance(move, 'critical'):
-            logger.debug(f'"{move}" against {self.decoloredName} '
-                         'is a fast critical')
-            self.genCriticalValues(move)
-            self.printMove(sender, move, 'fastCriticalMessage')
-            self._moveReceive(move, values='critical')
-
-            info = ('fast', 'critical')
-            self.moveReceiveEffects(move, info, sender)
-
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-        else:
-            logger.debug(f'"{move}" against {self.decoloredName} is fast')
-            self.genValues(move)
-            self.printMove(sender, move, 'fastMessage')
-            self._moveReceive(move, values='none')
-
-            info = ('fast', 'normal')
-            self.moveReceiveEffects(move, info, sender)
-
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-
-    def moveReceiveCounterBlock(self, move, sender):
-        # If move is blocked
-        if random.uniform(1, 100) <= self.genChance(move, 'block'):
-            logger.debug(f'"{move}" against {self.decoloredName} is blocked')
-            self.genCounterValues(move, 'block')
-            self.printMove(sender, move, 'blockMessage')
-            self._moveReceive(move, values='block')
-
-            info = ('block', 'success')
-            self.moveReceiveEffects(move, info, sender)
-
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-        else:
-            # If move is critical after failed block
-            if random.uniform(1, 100) <= self.genChance(move, 'critical'):
-                logger.debug(f'"{move}" against {self.decoloredName} '
-                             'is failed block critical')
-                self.genCounterFailCriticalValues(move, 'block')
-                self.printMove(sender, move, 'blockFailCriticalMessage')
-                self._moveReceive(move, values='blockFailCritical')
-
-                info = ('block', 'critical')
-                self.moveReceiveEffects(move, info, sender)
-
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        self, move, sender, info=info)
-            else:
-                logger.debug(f'"{move}" against {self.decoloredName} '
-                             'is failed block')
-                self.genCounterFailValues(move, 'block')
-                self.printMove(sender, move, 'blockFailMessage')
-                self._moveReceive(move, values='blockFail')
-
-                info = ('block', 'fail')
-                self.moveReceiveEffects(move, info, sender)
-
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        self, move, sender, info=info)
-
-    def moveReceiveCounterEvade(self, move, sender):
-        # If move is evaded
-        if random.uniform(1, 100) <= self.genChance(move, 'evade'):
-            logger.debug(f'"{move}" against {self.decoloredName} is evaded')
-            self.genCounterValues(move, 'evade')
-            self.printMove(sender, move, 'evadeMessage')
-            self._moveReceive(move, values='evade')
-
-            info = ('evade', 'success')
-            self.moveReceiveEffects(move, info, sender)
-
-            if not self.isPlayer:
-                self.AI.analyseMoveReceive(
-                    self, move, sender, info=info)
-        else:
-            # If move is critical after failed evade
-            if random.uniform(1, 100) <= self.genChance(move, 'critical'):
-                logger.debug(f'"{move}" against {self.decoloredName} '
-                             'is failed evade critical')
-                self.genCounterFailCriticalValues(move, 'evade')
-                self.printMove(sender, move, 'evadeFailCriticalMessage')
-                self._moveReceive(move, values='evadeFailCritical')
-
-                info = ('evade', 'critical')
-                self.moveReceiveEffects(move, info, sender)
-
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        self, move, sender, info=info)
-            else:
-                logger.debug(f'"{move}" against {self.decoloredName} '
-                             'is failed evade')
-                self.genCounterFailValues(move, 'evade')
-                self.printMove(sender, move, 'evadeFailMessage')
-                self._moveReceive(move, values='evadeFail')
-
-                info = ('evade', 'critical')
-                self.moveReceiveEffects(move, info, sender)
-
-                if not self.isPlayer:
-                    self.AI.analyseMoveReceive(
-                        self, move, sender, info=info)
-
-    def _moveReceive(self, move,
-                     values='none',
-                     sender=None):
-        """Private method for applying a move onto Fighter.
-Pass in a tuple of stats to apply their corresponding values."""
-        logger.debug(f'{self.decoloredName} is receiving values {values}')
-
-        originalValues = values
-        if values == 'none':
-            values = [f'{stat}Value' for stat in self.stats]
-        # If 'failure' is given, use all failure stats
-        elif values == 'failure':
-            values = [f'failure{stat.upper()}Value' for stat in self.stats]
-        # If 'critical' is given, use all critical stats
-        elif values == 'critical':
-            values = [f'critical{stat.upper()}Value' for stat in self.stats]
-        else:
-            for counter in self.allCounters:
-                # If a counter is given, use all counter stats
-                if values == counter:
-                    values = [
-                        f'{counter}{stat.upper()}Value'
-                        for stat in self.stats]
-                # If a counter + 'Fail' is given,
-                # use all counter fail stats
-                elif values == counter + 'Fail':
-                    values = [
-                        f'{counter}Fail{stat.upper()}Value'
-                        for stat in self.stats]
-                # If a counter + 'FailCritical' is given,
-                # use all counter fail critical stats
-                elif values == counter + 'FailCritical':
-                    values = [
-                        f'{counter}FailCritical{stat.upper()}Value'
-                        for stat in self.stats]
-        if not isinstance(values, (tuple, list)):
-            raise ValueError(
-                f'Received {originalValues} but could not parse it')
-
-        logger.debug(f'Parsed {originalValues!r} as {values}')
-
-        original_stats = ', '.join(
-            [f'{k}: {v.value}' for k, v in self.stats.items()])
-
-        for stat in self.stats:
-            statUpper = stat.upper()
-            value = stat + 'Value'
-            criticalValue = 'critical' + statUpper + 'Value'
-            failValue = 'failure' + statUpper + 'Value'
-
-            for counter in self.allCounters:
-                cVal = counter + statUpper + 'Value'
-                cFailVal = counter + 'Fail' + statUpper + 'Value'
-                cFailCritVal = counter + 'FailCritical' + statUpper + 'Value'
-                if cVal in values and cVal in move:
-                    setattr(self, stat, getattr(self, stat)
-                            + round(float(move[cVal])))
-                if cFailVal in values and cFailVal in move:
-                    setattr(self, stat, getattr(self, stat)
-                            + round(float(move[cFailVal])))
-                if cFailCritVal in values and cFailCritVal in move:
-                    setattr(self, stat, getattr(self, stat)
-                            + round(float(move[cFailCritVal])))
-            if value in values and value in move:
-                setattr(self, stat, getattr(self, stat)
-                        + round(float(move[value])))
-            if criticalValue in values and criticalValue in move:
-                setattr(self, stat, getattr(self, stat)
-                        + round(float(move[criticalValue])))
-            if failValue in values and failValue in move:
-                setattr(self, stat, getattr(self, stat)
-                        + round(float(move[failValue])))
-
-        new_stats = ', '.join(
-            [f'{k}: {v.value}' for k, v in self.stats.items()])
-        logger.debug(f"{self.decoloredName}'s _moveReceive changed stats "
-                     f'from:\n{original_stats}\n'
-                     f'to {new_stats}')
-
-    @staticmethod
-    def availableMoveCombination(move, requirement, objects,
-                                 membership_func=None, verbose=False):
-        """Returns True if objects has the requirements for a move.
-
-        When no combination is required or the move is NoneMove,
-        True is returned.
-        When the first available combination is found, it is returned.
-        If no combinations match, False is returned.
-        Note: Returned booleans are of type BoolDetailed.
-
-        Args:
-            move (Move): The move to check.
-            requirement:
-                The requirements key from move to check in `objects`.
-            objects:
-                The container of prerequisites.
-            membership_func (Optional[Callable]): The function to use to
-                determine if an object in `objects` matches the requirement.
-                Takes the objects and an object in a combination
-                from requirement.
-
-                def membership_func(objects, obj):
-                    ...
-
-                If None, will use `obj in objects`.
-            verbose (bool): For moves with one combination of requirements, if
-                items are missing, show them in the BoolDetailed description.
+    def update_status_effect_durations(self):
+        """Update all durations and remove completed status effects.
 
         Returns:
-            BoolDetailed:
-            Tuple[BoolDetailed, List]: verbose is True and there is only
-                one combination of requirements, so a tuple is returned
-                with the BoolDetailed and a list of the objects that were not
-                in `objects`, if there were any.
-            Tuple[BoolDetailed, None]: verbose is True but there is more than
-                one combination of requirements, so no missing objects are
-                returned. This could be programmed in to map the missing
-                objects to each combination.
+            list: A list of wearoff messages.
 
         """
-        missing = []
-
-        if move['name'] == 'None':
-            result = BoolDetailed(
-                True, 'NONEMOVE',
-                'NoneMove was given.')
-            if verbose:
-                return result, missing
-            return result
-
-        if requirement in move:
-            requirements = move[requirement]
-            for combination in requirements:
-                for obj in combination:
-                    if membership_func is not None:
-                        if membership_func(objects, obj):
-                            continue  # Object matched, continue combination
-                    # No membership_func was given, test for membership
-                    elif obj in objects:
-                        continue  # Object matched, continue combination
-
-                    if verbose and len(requirements) == 1:
-                        # Store the missing objects for verbose
-                        missing.append(obj)
-                        continue
-                    else:
-                        break  # Skip combination, object missing
-                else:
-                    if verbose:
-                        return combination, missing
-                    return combination
+        effects = self.status_effects
+        messages = []
+        i = 0
+        while i < len(effects):
+            if effects[i]['duration'] <= 0:
+                if 'wearoffMessage' in effects[i]:
+                    messages.append((effects[i], 'wearoffMessage', None))
+                del effects[i]
             else:
-                result = BoolDetailed(
-                    False, 'NOCOMBINATIONFOUND',
-                    'Did not find any matching combination.')
-                if verbose:
-                    return result, missing
-                return result
-        else:
-            result = BoolDetailed(
-                True, 'NOREQUIREMENTS',
-                'No requirements found.')
-            if verbose:
-                return result, missing
-            return result
+                effects[i]['duration'] -= 1
+                i += 1
 
-    def availableMoveCombinationMoveType(self, move, verbose=False):
-        """Returns True if Fighter has the MoveType requirements for a move.
+        return messages
+
+    def update_status_effect_values(self):
+        """Apply status effect values."""
+        messages = []
+
+        for effect in self.status_effects:
+            values = {}
+            for stat, stat_info in self.stats.items():
+                key = f'{stat}Value'
+
+                if key not in effect:
+                    continue
+
+                statConstant = stat_info.int_full
+
+                value = Bound.call_random(effect[key])
+
+                value *= (
+                    self.battle_env.base_values_multiplier_percent / 100
+                )
+
+                value *= getattr(
+                    self.battle_env,
+                    f'base_value_{statConstant}_multiplier_percent',
+                    100
+                ) / 100
+
+                value = round(value)
+
+                values.setdefault(stat, 0)
+                values[stat] += value
+
+            self.apply_values(values)
+
+            if 'applyMessage' in effect:
+                messages.append((effect, 'applyMessage', values))
+
+        return messages
+
+    def use_item_requirements(self, move_or_combination=None,
+                              return_string=True):
+        """Find the combination of items to be used, and subtract them from
+        the Fighter's inventory. Will fail if no combination
+        was found that worked.
 
         Args:
-            move (Move): The move to check.
-            verbose (bool): Use availableMoveCombination with verbose enabled.
+            move_or_combination (Union[Move, Iterable[Item]]):
+                Either a combination of items to use, or a move
+                to gather requirements from.
+            return_string (bool): If True, will return a string of
+                items that were used and their new count.
+
+        Returns:
+            None
+            str: A string of items used, if `return_string` is True.
 
         """
-        return self.availableMoveCombination(
-            move, 'moveTypes', self.moveTypes, verbose=verbose)
-
-    def availableMoveCombinationSkill(self, move, verbose=False):
-        """Returns True if Fighter has the Skill requirements for a move.
-
-        Args:
-            move (Move): The move to check.
-            verbose (bool): Use availableMoveCombination with verbose enabled.
-
-        """
-        def membership_func(objects, combSkill):
-            return any(
-                selfSkill >= combSkill
-                if type(selfSkill) == type(combSkill) else False
-                for selfSkill in objects
+        if isinstance(move_or_combination, Move):
+            combination = self.available_items_in_move(
+                move_or_combination
             )
+        else:
+            combination = move_or_combination
 
-        return self.availableMoveCombination(
-            move, 'skillRequired',
-            self.skills, membership_func,
-            verbose=verbose
-        )
+        # Return detailed booleans if that was given
+        if isinstance(combination, BoolDetailed):
+            return combination
 
-    def availableMoveCombinationInventory(self, move, verbose=False):
-        """Returns True if Fighter has the Item requirements for a move.
+        if return_string:
+            strings = []
 
-        Args:
-            move (Move): The move to check.
-            verbose (bool): Use availableMoveCombination with verbose enabled.
+        for itemDict in combination:
+            invItem = self.find_item({'name': itemDict['name']})
 
-        """
-        def membership_func(objects, itemDict):
-            search = self.findItem({'name': itemDict['name']})
-            if search is None:
-                # Item not found
-                return False
+            # If required, find item in inventory and subtract from it
             if 'count' in itemDict:
-                # Item needs to be depleted
-                if search['count'] >= itemDict['count']:
-                    # Item can be depleted
-                    return True
+                invItem['count'] -= itemDict['count']
+
+            # Make sure item count is not negative
+            if invItem['count'] < 0:
+                raise RuntimeError(f'Item {invItem} count '
+                                   f"has gone negative: {invItem['count']}")
+
+            # Else if item count is 0, delete it from inventory
+            elif invItem['count'] == 0:
+                index = self.inventory.index(invItem)
+                del self.inventory[index]
+
+            # Conditionally print out the item used
+            if return_string:
+                name = invItem['name']
+                if 'count' in itemDict:
+                    used = itemDict.get('count', 0)
+                    newCount = invItem['count']
+                    strings.append(
+                        format_color(
+                            f'{used:,} {name}{plural(used)} used '
+                            f'({newCount:,} left)'
+                        )
+                    )
                 else:
-                    # Item cannot be depleted
-                    return False
-            else:
-                # Item doesn't need to be depleted
-                return True
+                    strings.append(format_color(f'{name} used'))
 
-        return self.availableMoveCombination(
-            move, 'itemRequired',
-            self.skills, membership_func,
-            verbose=verbose
-        )
-
-    def availableMove(
-            self, move, *,
-            ignoreMoveTypes=False, ignoreSkills=False, ignoreItems=False):
-        """Returns True if a move can be available in the Fighter's moveset.
-
-        The attributes that can influence this search are:
-            self.moveTypes
-            self.skills
-            self.inventory
-
-        Args:
-            move (Move): The move to verify usability.
-            ignoreMoveTypes (bool): Ignore checking for MoveTypes.
-            ignoreSkills (bool): Ignore checking for Skills.
-            ignoreItems (bool): Ignore checking for Items.
-
-        """
-        # MoveType Check
-        if not ignoreMoveTypes \
-                and not self.availableMoveCombinationMoveType(move):
-            return BoolDetailed(
-                False, 'MISSINGMOVETYPE',
-                'Missing required move types.')
-        # Skill Check
-        if not ignoreSkills \
-                and not self.availableMoveCombinationSkill(move):
-            return BoolDetailed(
-                False, 'MISSINGSKILL',
-                'Missing required skills.')
-        # Item Check
-        if not ignoreItems \
-                and not self.availableMoveCombinationInventory(move):
-            return BoolDetailed(
-                False, 'MISSINGINVENTORY',
-                'Missing required items.')
-
-        return True
-
-    def availableMoves(self, moves=None, **kwargs):
-        """Returns a list of available moves from a list of moves.
-moves - The list to filter. If None, will use self.moves."""
-        if moves is None:
-            moves = self.moves
-        return [move for move in moves if self.availableMove(
-            move, **kwargs)]
-
-    # Value Generators
-    def genValue(self, move, stat, changeRandNum=True):
-        """Generate a Value from a move.
-move - The move to generate/extract the value from.
-stat - The stat value that is being generated/extracted.
-changeRandNum - If True, change the move's randNum
-    to the generated value if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-        statName = stat + 'Value'
-        constantName = self.stats[stat].int_full
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= getattr(self.battle_env,
-            f'base_value_{constantName}_multiplier_percent'
-        ) / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    def genValues(self, move, changeRandNum=True):
-        """Generate values for every stat in a move.
-Returns None if there is no value for a stat."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genValue(
-                move, stat, changeRandNum)
-
-        return values
-
-    # Cost Generators
-    def genCost(self, move, stat, case, changeRandNum=True):
-        """Generate a Cost from a move.
-move - The move to generate/extract the cost from.
-stat - The stat cost that is being generated/extracted.
-case - The situation that the failure value is being taken from.
-    failure - When failing the move.
-changeRandNum - If True, change the move's randNum
-    to the generated cost if available."""
-        cases = ('normal', 'failure')
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-        if case not in cases:
-            raise ValueError(
-                f'{case} is not a valid situation '
-                f"({', '.join([repr(c) for c in cases])})")
-
-        statConstant = self.stats[stat].int_full
-
-        # Parse case into statName
-        if case == 'normal':
-            statName = stat + 'Cost'
-        elif case == 'failure':
-            statName = 'failure' + stat.upper() + 'Cost'
-        else:
-            raise RuntimeError(
-                f'Could not parse case {case!r}, possibly no switch case')
-
-        if statName not in move:
-            return None
-
-        cost = Bound.call_random(move[statName])
-
-        cost *= self.battle_env.base_energies_cost_multiplier_percent / 100
-        cost *= getattr(self.battle_env,
-            f'base_energy_cost_{statConstant}_multiplier_percent'
-        ) / 100
-
-        cost = round(cost)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = cost
-
-        return cost
-
-    def genChance(self, move, chanceType):
-        """Generate a chance from a move.
-move - The move to extract chance from.
-chanceType - The type of the chance to extract.
-    Accepts counter names, 'speed', 'failure', and 'critical'."""
-        validChancesNonCounter = ['speed', 'failure', 'critical']
-        validChancesCounter = [counter for counter in self.allCounters]
-        validChances = validChancesNonCounter + validChancesCounter
-        if chanceType not in validChances:
-            raise ValueError(
-                f'{chanceType} is not a valid chance '
-                f"({', '.join([repr(s) for s in validChances])})")
-
-        chanceName = chanceType + 'Chance'
-
-        if chanceType == 'speed':
-            chance = 100 - move['speed']
-
-            chance = util.divi_zero(
-                chance, self.battle_env.base_speed_multiplier_percent / 100)
-
-            return chance
-
-        elif chanceType in validChancesNonCounter:
-            chance = Bound.call_random(move[chanceName])
-
-            chance *= getattr(self.battle_env,
-                f'base_{chanceType}_chance_percent') / 100
-
-            return chance
-
-        elif chanceType in validChancesCounter:
-            chanceConstant = self.allCounters[chanceType]
-
-            chance = Bound.call_random(move[chanceName])
-
-            chance *= getattr(self.battle_env,
-                f'base_{chanceConstant}_chance_percent') / 100
-
-            return chance
-
-        else:
-            raise RuntimeError(f'Failed to parse chanceType {chanceType}.')
-
-    # Critical Generators
-    def genCriticalValue(self, move, stat, changeRandNum=True):
-        """Generate a Value from a move affected by its critical multiplier.
-move - The move to generate/extract the value from.
-stat - The stat value that is being generated/extracted.
-changeRandNum - If True, change the move's randNum
-    to the generated value if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-
-        statName = 'critical' + stat.upper() + 'Value'
-        statConstant = self.stats[stat].int_full
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= getattr(self.battle_env,
-            f'base_value_{statConstant}_multiplier_percent'
-        ) / 100
-
-        value *= self.battle_env.base_critical_value_multiplier_percent / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    def genCriticalValues(self, move, changeRandNum=True):
-        """Generate critical values for every stat in a move.
-Returns None if there is no critical value for a stat."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genCriticalValue(
-                move, stat, changeRandNum)
-
-        return values
-
-    # Counter Generators
-
-    def genCounterValue(self, move, stat, counter, changeRandNum=True):
-        """Generate a Counter Value from a move.
-move - The move to generate/extract the value from.
-stat - The stat value that is being generated/extracted.
-counter - The counter's fail value that is being generated/extracted.
-changeRandNum - If True, change the move's randNum
-    to the generated value if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-        if counter not in self.allCounters:
-            raise ValueError(
-                f'{counter!r} is not a Fighter counter '
-                f"({', '.join([repr(s) for s in self.allCounters])})")
-
-        statName = counter + stat.upper() + 'Value'
-        statConstant = self.stats[stat].int_full
-        counterConstant = self.allCounters[counter]
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= getattr(self.battle_env,
-            f'base_value_{statConstant}_multiplier_percent'
-        ) / 100
-
-        value *= getattr(self.battle_env,
-            f'base_{counterConstant}_values_multiplier_percent'
-        ) / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    def genCounterValues(self, move, counter, changeRandNum=True):
-        """Generate counter values for every stat in a move.
-Returns None if there is no counter value for a stat."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genCounterValue(
-                move, stat, counter, changeRandNum)
-
-        return values
-
-    def genCounterFailValue(self, move, stat, counter, changeRandNum=True):
-        """Generate a Counter Fail Value from a move.
-move - The move to generate/extract the value from.
-stat - The stat value that is being generated/extracted.
-counter - The counter's fail value that is being generated/extracted.
-changeRandNum - If True, change the move's randNum
-    to the generated value if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-        if counter not in self.allCounters:
-            raise ValueError(
-                f'{counter!r} is not a Fighter counter '
-                f"({', '.join([repr(s) for s in self.allCounters])})")
-
-        statName = counter + 'Fail' + stat.upper() + 'Value'
-        statConstant = self.stats[stat].int_full
-        counterConstant = self.allCounters[counter]
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= getattr(self.battle_env,
-            f'base_value_{statConstant}_multiplier_percent'
-        ) / 100
-
-        value *= getattr(self.battle_env,
-            f'base_{counterConstant}_fail_value_multiplier_percent'
-        ) / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    def genCounterFailValues(self, move, counter, changeRandNum=True):
-        """Generate counter failure values for every stat in a move.
-Returns None if there is no failure value for a stat."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genCounterFailValue(
-                move, stat, counter, changeRandNum)
-
-        return values
-
-    def genCounterFailCriticalValue(
-            self, move, stat, counter, changeRandNum=True):
-        """Generate a Counter Fail Value from a move affected by
-its critical multiplier.
-move - The move to generate/extract the value from.
-stat - The stat value that is being generated/extracted.
-changeRandNum - If True, change the move's randNum
-    to the generated value if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-        if counter not in self.allCounters:
-            raise ValueError(
-                f'{counter!r} is not a Fighter counter '
-                f"({', '.join([repr(s) for s in self.allCounters])})")
-
-        statName = counter + 'FailCritical' + stat.upper() + 'Value'
-        statConstant = self.stats[stat].int_full
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= getattr(self.battle_env,
-            f'base_value_{statConstant}_multiplier_percent'
-        ) / 100
-
-        value *= self.battle_env.base_critical_value_multiplier_percent / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    def genCounterFailCriticalValues(self, move, counter, changeRandNum=True):
-        """Generate critical values for every stat in a move.
-Returns None if there is no critical value for a stat."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genCounterFailCriticalValue(
-                move, stat, counter, changeRandNum)
-
-        return values
-
-    def genFailureValue(self, move, stat, changeRandNum=True):
-        """Generate a failure value from a move.
-move - The move to generate/extract failureValue from.
-stat - The stat value that is being generated/extracted.
-changeRandNum - If True, change the move's failureValue.randNum
-    to the generated failureValue if available."""
-        if stat not in self.stats:
-            raise ValueError(
-                f'{stat} is not a Fighter stat '
-                f"({', '.join([repr(s) for s in self.stats])})")
-
-        statName = 'failure' + stat.upper() + 'Value'
-
-        if statName not in move:
-            return None
-
-        value = Bound.call_random(move[statName])
-
-        value *= self.battle_env.base_values_multiplier_percent / 100
-        value *= self.battle_env.base_failure_multiplier_percent / 100
-
-        value = round(value)
-
-        if changeRandNum and isinstance(move[statName], Bound):
-            move[statName].randNum = value
-
-        return value
-
-    # Failure Generator
-    def genFailureValues(self, move, changeRandNum=True):
-        """Generate failure values for every stat in a move.
-Returns None if there is no failure value for a stat.
-move - The move to generate/extract failureValue from.
-changeRandNum - If True, change the move's failure values' randNum
-    to the generated value if available."""
-        values = dict()
-        for stat in self.stats:
-            values[stat] = self.genFailureValue(
-                move, stat, changeRandNum)
-
-        return values
+        if return_string:
+            return '\n'.join(strings)

@@ -37,9 +37,9 @@ ALL_STATS = {
 ALL_STAT_INFOS = {k: v.to_stat_info() for k, v in ALL_STATS.items()}
 
 
-def get_defaults():
-    """Return a copy of ALL_STATS."""
-    return {k: v.copy() for k, v in ALL_STATS.items()}
+def get_defaults(stats=ALL_STATS):
+    """Return a copy of stats."""
+    return {k: v.copy() for k, v in stats.items()}
 
 
 def get_stat(int_short):
@@ -58,13 +58,14 @@ def create_stat(int_short, value, bound, rate):
     return result.copy(value, bound, rate)
 
 
-def create_default_stats(**kwargs):
-    """Create new stats based on ALL_STAT_INFOS.
+def create_default_stats(stats=ALL_STAT_INFOS, **kwargs):
+    """Create new stats based on a dictionary.
 
     Args:
+        stats_dict (dict): A dictionary of stats to copy from.
         **kwargs (Dict[str, Tuple[int, Bound, int]]):
             A dictionary with the keys specifying `int_short` and the values
-            specifiying each stat's value, bound, and rate.
+            specifying each stat's value, bound, and rate.
 
     """
     stats = {}
@@ -79,7 +80,7 @@ def create_default_stats(**kwargs):
                             f'{Bound.__class__.__name__} but received '
                             f'{bound!r} of type {type(bound)}')
 
-        result = ALL_STAT_INFOS.get(int_short)
+        result = stats.get(int_short)
         if result is None:
             raise ValueError(f'Unknown stat {int_short}')
 

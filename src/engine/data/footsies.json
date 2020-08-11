@@ -3,7 +3,7 @@
         "__type__": "Move",
         "values": {
             "name": "Kick",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -12,7 +12,7 @@
                 ]
             ],
             "description": "An expert kick.\nDeals 50 damage for 70 {st.ext_full}.\nSignificant bonus damage when it fails to be countered.",
-            "moveMessage": "{sender} kicks {target} for {move:hp neg} damage!",
+            "moveMessage": "{sender} kicks {target} for {-hpValue} damage!",
             "hpValue": -50,
             "stCost": -70,
             "effects": [
@@ -54,16 +54,16 @@
                 }
             ],
             "speed": 30,
-            "fastMessage": "{sender} swiftly kicks {target} for {move:hp neg} damage!",
+            "fastMessage": "{sender} swiftly kicks {target} for {-hpValue} damage!",
             "blockChance": 70,
             "blockHPValue": -40,
             "blockFailHPValue": -60,
-            "blockMessage": "{target} blocks {sender}'s kick, taking {move:hpBlock neg} damage!",
-            "blockFailMessage": "{target} fails to block {sender}'s kick, taking {move:hpBlockF neg} damage!",
+            "blockMessage": "{target} blocks {sender}'s kick, taking {-hpValue} damage!",
+            "blockFailMessage": "{target} fails to block {sender}'s kick, taking {-hpValue} damage!",
             "evadeChance": 40,
             "evadeFailHPValue": -90,
             "evadeMessage": "{target} dodges and {sender}'s kick whiffs!",
-            "evadeFailMessage": "{target} fails to evade {sender}'s kick, taking {move:hpEvadeF neg} damage!",
+            "evadeFailMessage": "{target} fails to evade {sender}'s kick, taking {-hpValue} damage!",
             "criticalChance": 0,
             "failureChance": 5,
             "failureMessage": "{sender} attempts to kick {target} but whiffs."
@@ -73,7 +73,7 @@
         "__type__": "Move",
         "values": {
             "name": "Strike",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -82,7 +82,7 @@
                 ]
             ],
             "description": "A precise dominant arm strike.\nDeals 30 damage for 40 {st.ext_full}.\nSignificant bonus damage when it fails to be countered.",
-            "moveMessage": "{sender} strikes {target} for {move:hp neg} damage!",
+            "moveMessage": "{sender} strikes {target} for {-hpValue} damage!",
             "hpValue": -30,
             "stCost": -40,
             "effects": [
@@ -106,16 +106,16 @@
                 }
             ],
             "speed": 10,
-            "fastMessage": "{sender} swiftly strikes {target} for {move:hp neg} damage!",
+            "fastMessage": "{sender} swiftly strikes {target} for {-hpValue} damage!",
             "blockChance": 60,
             "blockHPValue": -20,
             "blockFailHPValue": -40,
-            "blockMessage": "{target} blocks {sender}'s strike, taking {move:hpBlock neg} damage!",
-            "blockFailMessage": "{target} fails to block {sender}'s strike, taking {move:hpBlockF neg} damage!",
+            "blockMessage": "{target} blocks {sender}'s strike, taking {-hpValue} damage!",
+            "blockFailMessage": "{target} fails to block {sender}'s strike, taking {-hpValue} damage!",
             "evadeChance": 40,
             "evadeFailHPValue": -60,
             "evadeMessage": "{target} dodges and {sender}'s strike whiffs!",
-            "evadeFailMessage": "{target} fails to evade {sender}'s strike, taking {move:hpEvadeF neg} damage!",
+            "evadeFailMessage": "{target} fails to evade {sender}'s strike, taking {-hpValue} damage!",
             "criticalChance": 0,
             "failureChance": 5,
             "failureMessage": "{sender} attempts to strike {target} but whiffs."
@@ -125,7 +125,7 @@
         "__type__": "Move",
         "values": {
             "name": "Jab",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -134,20 +134,20 @@
                 ]
             ],
             "description": "An expert punch.\nDeals 20 damage for 30 {st.ext_full}.\nMinor/Moderate bonus damage when it fails to be countered.",
-            "moveMessage": "{sender} jabs {target} for {move:hp neg} damage!",
+            "moveMessage": "{sender} jabs {target} for {-hpValue} damage!",
             "hpValue": -20,
             "stCost": -30,
             "speed": 70,
-            "fastMessage": "{sender} swiftly jabs {target} for {move:hp neg} damage!",
+            "fastMessage": "{sender} swiftly jabs {target} for {-hpValue} damage!",
             "blockChance": 60,
             "blockHPValue": -10,
             "blockFailHPValue": -25,
-            "blockMessage": "{target} blocks {sender}'s jab, taking {move:hpBlock neg} damage!",
-            "blockFailMessage": "{target} fails to block {sender}'s jab, taking {move:hpBlockF neg} damage!",
+            "blockMessage": "{target} blocks {sender}'s jab, taking {-hpValue} damage!",
+            "blockFailMessage": "{target} fails to block {sender}'s jab, taking {-hpValue} damage!",
             "evadeChance": 40,
             "evadeFailHPValue": -40,
             "evadeMessage": "{target} dodges and {sender}'s jab whiffs!",
-            "evadeFailMessage": "{target} fails to evade {sender}'s jab, taking {move:hpEvadeF neg} damage!",
+            "evadeFailMessage": "{target} fails to evade {sender}'s jab, taking {-hpValue} damage!",
             "criticalChance": 0,
             "failureChance": 5,
             "failureMessage": "{sender} tries to jab {target} but whiffs."
@@ -157,7 +157,7 @@
         "__type__": "Move",
         "values": {
             "name": "Advance",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -168,7 +168,7 @@
             "description": "Close the gap.\nGain 20 {st.ext_full}.",
             "stCost": 20,
             "speed": 100,
-            "fastMessage": "{sender} closes in on {target}, gaining {move:stC} {st.ext_full}.",
+            "fastMessage": "{sender} closes in on {target}, gaining {stCost} {st.ext_full}.",
             "criticalChance": 0,
             "failureChance": 0
         }
@@ -177,7 +177,7 @@
         "__type__": "Move",
         "values": {
             "name": "Retreat",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -188,7 +188,7 @@
             "description": "Close the gap.\nDecreases the opponent's {st.ext_full} by 10.",
             "stValue": -10,
             "speed": 100,
-            "fastMessage": "{sender} retreats and {target} loses {move:st neg} {st.ext_full}.",
+            "fastMessage": "{sender} retreats and {target} loses {-stValue} {st.ext_full}.",
             "criticalChance": 0,
             "failureChance": 0
         }
@@ -197,7 +197,7 @@
         "__type__": "Move",
         "values": {
             "name": "Hold",
-            "moveTypes": [
+            "movetypes": [
                 [
                     {
                         "__type__": "MoveType",
@@ -208,7 +208,7 @@
             "description": "Maintain ground.\nGain 10 {hp.ext_full}.",
             "hpCost": 10,
             "speed": 100,
-            "fastMessage": "{sender} holds, gaining {move:hpC} {hp.ext_full}.",
+            "fastMessage": "{sender} holds, gaining {hpCost} {hp.ext_full}.",
             "criticalChance": 0,
             "failureChance": 0
         }

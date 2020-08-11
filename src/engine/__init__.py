@@ -60,14 +60,17 @@ from .stat import Stat, StatInfo
 from .status_effect import StatusEffect
 from src import logs
 from src.textio import (
-    ColoramaCodes, cr, format_color, input_color, print_color
+    ColoramaCodes, cr, format_color, input_color, print_color,
+    input_boolean
 )
+from src.utility import exception_message, collect_and_log_garbage
 
 __all__ = [
     util, fighter_stats, json_handler,
     BattleEnvironment, BoolDetailed, Bound, Fighter, Item, Move,
     MoveType, Skill, Stat, StatInfo, StatusEffect,
-    ColoramaCodes, cr, format_color, input_color, print_color
+    ColoramaCodes, cr, format_color, input_color, print_color,
+    input_boolean
 ]
 
 # Set up logger
@@ -77,7 +80,7 @@ logger.info('Starting dueturn.py')
 moveTemplate = [
     Move({
         'name': '',
-        'moveTypes': ([MoveType('Physical')],),
+        'movetypes': ([MoveType('Physical')],),
         'description': '',
         'skillRequired': ([],),
         'itemRequired': ([
@@ -87,7 +90,7 @@ moveTemplate = [
             },
             ],),
         'moveMessage': """\
-{sender} attacks {target} for {move:hp neg} damage, costed {move:stC neg}""",
+{sender} attacks {target} for {-hpValue} damage, costed {-stCost}""",
 
         'hpValue': Bound(-0, -0),
         'stValue': Bound(-0, -0),
@@ -106,7 +109,7 @@ moveTemplate = [
                 'duration': 0,
 
                 'receiveMessage': '{self}',
-                'applyMessage': '{self} {hpValue} {hp.ext_full}',
+                'applyMessage': '{self} {-hpValue} {hp.ext_full}',
                 'wearoffMessage': '{self}',
 
                 'hpValue': Bound(-0, -0),
@@ -129,9 +132,9 @@ moveTemplate = [
         'blockFailSTValue': Bound(-0, -0),
         'blockFailMPValue': Bound(-0, -0),
         'blockMessage': """\
-{move:hpBlock neg}""",
+{-hpValue}""",
         'blockFailMessage': """\
-{move:hpBlockF neg}""",
+{-hpValue}""",
 
         'evadeChance': 0,
         'evadeHPValue': 0,
@@ -141,9 +144,9 @@ moveTemplate = [
         'evadeFailSTValue': Bound(-0, -0),
         'evadeFailMPValue': Bound(-0, -0),
         'evadeMessage': """\
-{move:hpEvade neg}""",
+{-hpValue}""",
         'evadeFailMessage': """\
-{move:hpEvadeF neg}""",
+{-hpValue}""",
 
         'criticalChance': 0,
         'criticalHPValue': Bound(-0, -0),
@@ -156,20 +159,20 @@ moveTemplate = [
         'evadeFailCriticalSTValue': Bound(-0, -0),
         'evadeFailCriticalMPValue': Bound(-0, -0),
         'criticalMessage': """\
-{move:hpCrit neg}""",
+{-hpValue}""",
         'fastCriticalMessage': """\
-{move:hpCrit neg}""",
+{-hpValue}""",
         'blockFailCriticalMessage': """\
-{move:hpBlockFCrit neg}""",
+{-hpValue}""",
         'evadeFailCriticalMessage': """\
-{move:hpEvadeFCrit neg}""",
+{-hpValue}""",
 
         'failureChance': 0,
         'failureHPValue': Bound(-0, -0),
         'failureSTValue': Bound(-0, -0),
         'failureMPValue': Bound(-0, -0),
         'failureMessage': """\
-{move:hpF neg}""",
+{-hpValue}""",
         }
     ),
 ]
@@ -217,6 +220,7 @@ def main():
                             'abc', 'def', 'ghi', 'ned', 'led', 'med', 'red',
                             'ked', 'sed', 'ped', 'ben'
                         },
+                        gamemode=None, AI=None,  # Prompt for gamemode and AI
                         data=data
                     ) as battle:
                 # User Setup
@@ -253,7 +257,7 @@ def main():
                     # Filter out only moves that the fighter can use
                     moveListFilter = [
                         m for m in moveList
-                        if fighter.availableMove(m)
+                        if fighter.available_move(m)
                         and m['name'] != 'None'
                     ]
 
@@ -286,14 +290,11 @@ def main():
                     firstPlayer, secondPlayer, autoplay=autoplay)
                 battle.print_end_message(end_message)
 
-            # Collect garbage and log them
-            util.collect_and_log_garbage(logger)
-
             # Wait for player to start another game
             input()
             print()
     except Exception:
-        msg = util.exception_message(
+        msg = exception_message(
             header='RUNTIME ERROR', log_handler=logger)
         msg += '\n\nSee the log for more details.'
 
@@ -307,6 +308,7 @@ def main():
     except SystemExit:
         logger.info('SysExit')
     finally:
+        collect_and_log_garbage(logger)
         logger.info('Ending game loop')
 
 

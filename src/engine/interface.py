@@ -1,6 +1,5 @@
 import cmd
 import platform
-import time
 
 from .booldetailed import BoolDetailed
 from .data import fighter_stats
@@ -99,9 +98,9 @@ Usage: ?[cmd/topic]"""
         """
 
     # ----- Commands -----
-    # def do_debug(self, arg):
-    #     """Activate the python debugger within the shell."""
-    #     breakpoint()
+    def do_debug(self, arg):
+        """Activate the python debugger within the shell."""
+        breakpoint()
 
     # ----- Internal methods -----
     def exit(self):
@@ -253,7 +252,7 @@ Usage: display [future commands]"""
     # ----- Command Loop -----
     def preloop(self):
         """Called before cmdloop() runs."""
-        logger.debug(f"{self.fighter.decoloredName}'s battle shell starting")
+        logger.debug(f"{self.fighter.name_decolored}'s battle shell starting")
         if self.cmdqueue:
             if self.cmdqueue[0] == ['first_time']:
                 # Special code for first time user start-up
@@ -262,7 +261,7 @@ Usage: display [future commands]"""
 
     def postloop(self):
         """Called right before cmdloop() returns."""
-        logger.debug(f"{self.fighter.decoloredName}'s battle shell exiting")
+        logger.debug(f"{self.fighter.name_decolored}'s battle shell exiting")
 
 
 class FighterBattleMoveShellCommons(object):
@@ -291,9 +290,9 @@ Usage: back [future commands]"""
         """List your current moves.
 Usage: list [future commands]"""
         # Should be the same as in the Move shell
-        print_color(self.fighter.formatMoves(
-            ignoreSkills=True,
-            ignoreItems=True)
+        print_color(self.fighter.string_moves(
+            ignore_skills=True,
+            ignore_items=True)
         )
         print()
 
@@ -315,10 +314,10 @@ class FighterBattleMoveShell(
         """Searches for the move."""
         inputMove = line.lower().title()
 
-        moveFind, unsatisfactories = self.fighter.findMove(
+        moveFind, unsatisfactories = self.fighter.find_move(
             {'name': inputMove},
-            ignoreSkills=True,
-            ignoreItems=True,
+            ignore_skills=True,
+            ignore_items=True,
             exactSearch=cfg_interface.MOVES_REQUIRE_EXACT_SEARCH,
             detailedFail=True,
             showUnsatisfactories=True)
@@ -376,7 +375,7 @@ class FighterBattleMoveShell(
                 else:
                     self.prompt = message + ', type again: '
         else:
-            raise RuntimeError('moveFind in playerTurnMove returned '
+            raise RuntimeError('moveFind in player_move returned '
                                f'unknown object {moveFind!r}')
 
     # ----- Commands -----
@@ -433,11 +432,11 @@ class FighterBattleMoveInfoShell(
         """Searches for the move."""
         inputMove = line.lower().title()
 
-        moveFind = self.fighter.findMove(
+        moveFind = self.fighter.find_move(
             {'name': inputMove},
-            ignoreMoveTypes=True,
-            ignoreSkills=True,
-            ignoreItems=True,
+            ignore_movetypes=True,
+            ignore_skills=True,
+            ignore_items=True,
             exactSearch=cfg_interface.MOVES_REQUIRE_EXACT_SEARCH,
             detailedFail=True)
 
@@ -476,7 +475,7 @@ class FighterBattleMoveInfoShell(
                 else:
                     self.prompt = message + ', type again: '
         else:
-            raise RuntimeError('MoveInfoShell from moveFind in playerTurnMove '
+            raise RuntimeError('MoveInfoShell from moveFind in player_move '
                                f'returned unknown object {moveFind!r}')
 
     # ----- Internal methods -----

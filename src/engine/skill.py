@@ -8,6 +8,14 @@ class Skill(JSONSerializableBasic):
         self.name = name
         self.level = level
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return (
+                self.name == other.name
+                and self.level == other.level
+            )
+        return NotImplemented
+
     def __repr__(self):
         return '{}({!r}, {!r})'.format(
             self.__class__.__name__,

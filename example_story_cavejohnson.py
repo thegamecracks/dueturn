@@ -4,7 +4,12 @@ import random
 import time
 
 from src.sequencer import begin_sequence
-from src.textio import *
+from src.textio import (
+    input_choice_typewriter, input_loop_if_equals_typewriter,
+    input_number_typewriter, print_sleep_multiline, print_typewriter,
+    textio_typewriter,
+    SLEEP_CHAR_DELAY_NORMAL, SLEEP_CHAR_DELAY_SPECIFICS
+)
 
 player_name = '<Your Name Here>'
 aep_voice_line_type = None
@@ -26,13 +31,12 @@ def intro():
         sleep_line=0.5
     )
     # Get name and Title Case it
-    player_name = input_loop_typewriter(
+    player_name = input_loop_if_equals_typewriter(
         "Now my friend, what's your name? ",
-        loopIfEquals={
+        loop_if_equals={
             '': "What's that, I didn't hear you: ",
             'cave johnson': 'Yeah, no, tell me your actual name: '
         },
-        loopBreak=(),
         sleep_char=SLEEP_CHAR_DELAY_NORMAL,
         sleep_char_specifics={',': 0.3}
     ).title()
@@ -334,7 +338,7 @@ def aepvl__error1():
         'it seems fine: '
     ]
     seems_fine = lambda: random.choice(seems_fine_list)
-        
+
     while guesses > 0:
         choice = input_number_typewriter(
             prompt,
@@ -412,9 +416,9 @@ def aepvl_error1__found_line():
     guesses = 6
     prompt = 'That ">=", it should be something else: '
     should_add = 'but it should be adding onto sum: '
-        
+
     while guesses > 0:
-        choice = input_loop_typewriter(
+        choice = input_loop_if_equals_typewriter(
             prompt,
             loopPrompt='What should ">=" be replaced with: ',
             loopBreak=(),
@@ -512,8 +516,6 @@ def main(loop=True):
             begin_sequence(intro)
             input('=====Game Ended; press Enter to restart===== ')
             os.system('cls' if os.name == 'nt' else 'clear')
-    else:
-        _main()
 
 
 if __name__ == '__main__':

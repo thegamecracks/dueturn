@@ -1,7 +1,5 @@
-from . import util
-from .bound import Bound
-from .data import fighter_stats
 from .json_serialization import JSONSerializableValues
+from src.utility import dict_copy
 
 
 class Move(JSONSerializableValues):
@@ -11,7 +9,7 @@ class Move(JSONSerializableValues):
         values (Dict[str, Any]): A dictionary of values.
             Common values include:
             'name': 'Name of move',
-            'moveTypes': ([MoveType('Physical')],),
+            'movetypes': ([MoveType('Physical')],),
             # MoveType requirements (see skillRequired for explanation)
             'description': 'Description of the move',
             'skillRequired': ([SKOneSkill(1)],
@@ -33,6 +31,9 @@ class Move(JSONSerializableValues):
             'hpCost': Bound(-10, -20),
             'stCost': Bound(-10, -20),
             'mpCost': Bound(-20, -30),
+            # Optional message to customize insufficient stats
+            'insufficientStatMessage': '{self} tried using {move} '
+                                       'but the {ext_full} cost was {-cost}.',
 
             'speed': 40,  # Chance of attack being uncounterable
             'fastMessage': 'Uncounterable Attack',
@@ -83,6 +84,11 @@ class Move(JSONSerializableValues):
     def __init__(self, values):
         self.values = values
 
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.values == other.values
+        return NotImplemented
+
     def __repr__(self):
         return '{}({})'.format(
             self.__class__.__name__,
@@ -105,99 +111,9 @@ class Move(JSONSerializableValues):
         return key in self.values
 
     def __format__(self, format):
-        format = format.split()
-        message = []
-        if len(format) == 0:
-            return self['name']
-        elif format[0] == 'hp':
-            message.append(str(util.num(float(self['hpValue']))))
-        elif format[0] == 'st':
-            message.append(str(util.num(float(self['stValue']))))
-        elif format[0] == 'mp':
-            message.append(str(util.num(float(self['mpValue']))))
-        elif format[0] == 'hpF':
-            message.append(str(util.num(float(self['failureHPValue']))))
-        elif format[0] == 'stF':
-            message.append(str(util.num(float(self['failureSTValue']))))
-        elif format[0] == 'mpF':
-            message.append(str(util.num(float(self['failureMPValue']))))
-        elif format[0] == 'hpCrit':
-            message.append(str(util.num(float(self['criticalHPValue']))))
-        elif format[0] == 'stCrit':
-            message.append(str(util.num(float(self['criticalSTValue']))))
-        elif format[0] == 'mpCrit':
-            message.append(str(util.num(float(self['criticalMPValue']))))
-        elif format[0] == 'hpC':
-            message.append(str(util.num(float(self['hpCost']))))
-        elif format[0] == 'stC':
-            message.append(str(util.num(float(self['stCost']))))
-        elif format[0] == 'mpC':
-            message.append(str(util.num(float(self['mpCost']))))
-        elif format[0] == 'hpBlock':
-            message.append(str(util.num(float(self['blockHPValue']))))
-        elif format[0] == 'stBlock':
-            message.append(str(util.num(float(self['blockSTValue']))))
-        elif format[0] == 'mpBlock':
-            message.append(str(util.num(float(self['blockMPValue']))))
-        elif format[0] == 'hpBlockF':
-            message.append(str(util.num(float(self['blockFailHPValue']))))
-        elif format[0] == 'stBlockF':
-            message.append(str(util.num(float(self['blockFailSTValue']))))
-        elif format[0] == 'mpBlockF':
-            message.append(str(util.num(float(self['blockFailMPValue']))))
-        elif format[0] == 'hpBlockFCrit':
-            message.append(
-                str(util.num(float(self['blockFailCriticalHPValue']))))
-        elif format[0] == 'stBlockFCrit':
-            message.append(
-                str(util.num(float(self['blockFailCriticalSTValue']))))
-        elif format[0] == 'mpBlockFCrit':
-            message.append(
-                str(util.num(float(self['blockFailCriticalMPValue']))))
-        elif format[0] == 'hpEvade':
-            message.append(
-                str(util.num(float(self['evadeHPValue']))))
-        elif format[0] == 'stEvade':
-            message.append(str(util.num(float(self['evadeSTValue']))))
-        elif format[0] == 'mpEvade':
-            message.append(str(util.num(float(self['evadeMPValue']))))
-        elif format[0] == 'hpEvadeF':
-            message.append(str(util.num(float(self['evadeFailHPValue']))))
-        elif format[0] == 'stEvadeF':
-            message.append(str(util.num(float(self['evadeFailSTValue']))))
-        elif format[0] == 'mpEvadeF':
-            message.append(str(util.num(float(self['evadeFailMPValue']))))
-        elif format[0] == 'hpEvadeFCrit':
-            message.append(
-                str(util.num(float(self['evadeFailCriticalHPValue']))))
-        elif format[0] == 'stEvadeFCrit':
-            message.append(
-                str(util.num(float(self['evadeFailCriticalSTValue']))))
-        elif format[0] == 'mpEvadeFCrit':
-            message.append(str(
-                util.num(float(self['evadeFailCriticalMPValue']))))
-        elif format[0] == 'speed':
-            message.append(str(util.num(float(self['speed']))))
-        elif format[0] == 'blockChan':
-            message.append(str(util.num(float(self['blockChance']))))
-        elif format[0] == 'evadeChan':
-            message.append(str(util.num(float(self['evadeChance']))))
-        elif format[0] == 'failChan':
-            message.append(str(util.num(float(self['failureChance']))))
-        else:
-            raise ValueError(
-                'Tried formatting a move with non-existent argument(s) '
-                f'{format}'
-            )
+        return self['name']
 
-        message = ''.join(message)
-        if format[-1] == 'abs':
-            message = str(abs(util.num(message)))
-        elif format[-1] == 'neg':
-            message = str(-util.num(message))
-        return message
-
-    def averageValues(self, key_format):
+    def average_values(self, fighter, key_format):
         """Calculate the average move values with stats.
 
         If the value is a Bound, will use average of the Bound.
@@ -206,31 +122,27 @@ class Move(JSONSerializableValues):
             stat - The current stat being iterated through
 
         Example:
-            moveObj.averageValues('{stat}Value')
+            moveObj.average_values('{stat}Value')
 
         """
         total = []
         # BUG: Does not use a Fighter's stats to allow custom stats
         # to be recognized
-        for stat in fighter_stats.ALL_STATS:
-            key = eval("f'''" + key_format + "'''")
-            if key in self:
-                if isinstance(self[key], Bound):
-                    total.append(self[key].average())
+        for stat in fighter.stats:
+            key = key_format.format(stat=stat)
+            value = self.values.get(key)
+            if value is not None:
+                if hasattr(value, 'average'):
+                    total.append(value.average())
                 else:
-                    total.append(self[key])
+                    total.append(value)
         if (len_total := len(total)) == 0:
             # Return 0 for no values found
             return 0
         return sum(total) / len_total
 
-    def fmt(self, format) -> str:
-        """A shorter version of the __format__ method.
-
-        Intended for use in moves to shorten messages.
-
-        """
-        return self.__format__(format)
+    def copy(self):
+        return self.__class__(dict_copy(self.values))
 
     @staticmethod
     def parse_unsatisfactories(unsatisfactories):
@@ -238,7 +150,7 @@ class Move(JSONSerializableValues):
 
         Args:
             unsatisfactories (Iterable[BoolDetailed]): This should come
-                from the output of src.engine.dueturn.Fighter.findMove
+                from the output of src.engine.dueturn.Fighter.find_move
                 where the argument showUnsatisfactories = True.
 
         Returns:
@@ -276,17 +188,17 @@ class Move(JSONSerializableValues):
 
         return reasonMessageList
 
-    def searchItems(self, sub) -> dict:
+    def search_items(self, sub) -> dict:
         """Search through the move's items and return a dictionary of all
         key-value pairs if the key is a superset of sub."""
         return {k: v for k, v in self if sub in k}
 
-    def searchKeys(self, sub) -> list:
+    def search_keys(self, sub) -> list:
         """Search through the move's keys and return a list of all keys
         that is a superset of sub."""
         return [k for k in self if sub in k]
 
-    def searchValues(self, sub) -> list:
+    def search_values(self, sub) -> list:
         """Search through the move's items and return a list of all values
         if the corresponding key is a superset of sub."""
         return [v for k, v in self if sub in k]
