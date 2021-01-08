@@ -58,7 +58,7 @@ def create_stat(int_short, value, bound, rate):
     return result.copy(value, bound, rate)
 
 
-def create_default_stats(stats=ALL_STAT_INFOS, **kwargs):
+def create_default_stats(stats_dict=ALL_STAT_INFOS, **kwargs):
     """Create new stats based on a dictionary.
 
     Args:
@@ -68,7 +68,7 @@ def create_default_stats(stats=ALL_STAT_INFOS, **kwargs):
             specifying each stat's value, bound, and rate.
 
     """
-    stats = {}
+    new_stats = {}
     for int_short, args in kwargs.items():
         value, bound, rate = args
 
@@ -80,10 +80,10 @@ def create_default_stats(stats=ALL_STAT_INFOS, **kwargs):
                             f'{Bound.__class__.__name__} but received '
                             f'{bound!r} of type {type(bound)}')
 
-        result = stats.get(int_short)
+        result = stats_dict.get(int_short)
         if result is None:
             raise ValueError(f'Unknown stat {int_short}')
 
-        stats[int_short] = result.to_stat(value, bound, rate)
+        new_stats[int_short] = result.to_stat(value, bound, rate)
 
-    return stats
+    return new_stats

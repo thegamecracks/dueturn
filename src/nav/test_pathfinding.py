@@ -3,7 +3,7 @@ from .pathfinding import uniform_cost_search
 
 
 def test_uniform_cost_search():
-    """Run a simple test to build a GridMap and generate a path with
+    r"""Run a simple test to build a GridMap and generate a path with
     uniform_cost_search.
 
     Map:

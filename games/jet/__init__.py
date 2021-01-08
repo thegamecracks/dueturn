@@ -19,12 +19,30 @@ from src.textio import (
 )
 from src.utility import exception_message
 
+__copyright__ = """
+    Dueturn - A text-based two-player battle engine.
+    Copyright (C) 2020  thegamecracks
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 logger = logs.get_logger()
 
 player_stats = stats.get_defaults(stats.stats)
 player_evading_stats = stats.get_defaults(stats.evading_stats)
 
-player_inventory = {
+player_inventory = [
     engine.Item({
         'name': 'AIM-9 Sidewinder',
         'description': 'A short-range AA infrared-guided missile.',
@@ -39,7 +57,7 @@ player_inventory = {
         'count': 4,
         'maxCount': 4,
     }),
-}
+]
 
 
 def reset_color_method(s):
@@ -108,7 +126,7 @@ def scene_2():
     fl = stats.evading_stats['fl'].copy(120, engine.Bound(0, 120), 0)
     ch = stats.evading_stats['ch'].copy(120, engine.Bound(0, 120), 0)
     enemy_evading_stats = {'fl': fl, 'ch': ch}
-    enemy_inventory = {
+    enemy_inventory = [
         engine.Item({
             'name': 'AA-11 Archer',
             'description': 'A short-range AA infrared-guided missile.',
@@ -123,7 +141,7 @@ def scene_2():
             'count': 2,
             'maxCount': 2,
         }),
-    }
+    ]
     enemy = engine.Fighter(
         name='{FLred}Su-35{RA}',
         stats=enemy_stats,

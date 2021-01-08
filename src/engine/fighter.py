@@ -181,7 +181,7 @@ class Fighter:
         else:
             self.interface_shell_dict = interface_shell_dict
 
-        logger.debug(f'Created {self!r}')
+        logger.debug(f'Created fighter ({self.name_decolored})')
 
     def __repr__(self):
         return '{}({})'.format(
@@ -929,10 +929,10 @@ detailedFail - If True, return BoolDetailed when failing a search."""
 
         cost = Bound.call_random(move[statName])
 
-        cost *= self.battle_env.base_energies_cost_multiplier_percent / 100
+        cost *= self.battle_env.base_stat_costs_multiplier_percent / 100
         cost *= getattr(
             self.battle_env,
-            f'base_energy_cost_{statConstant}_multiplier_percent',
+            f'base_stat_cost_{statConstant}_multiplier_percent',
             100
         ) / 100
 
@@ -1729,7 +1729,10 @@ below is being used."""
         """Obtains a move from the player."""
         logger.debug(f"{self.name_decolored} is moving")
         if cmdqueue is None:
-            cmdqueue = [self.interface_shell_dict['moveCMD']]
+            cmdqueue = []
+            moveCMD = self.interface_shell_dict.get('moveCMD')
+            if moveCMD is not None:
+                cmdqueue.append(moveCMD)
         namespace = dict()
 
         # Get user interaction and use the changes in `namespace`
@@ -1887,7 +1890,7 @@ below is being used."""
             def chance_to_apply(chance):
                 result = (
                     random.uniform(1, 100) <= chance
-                    * self.battle_env.base_status_effects_chance_multiplier
+                    * self.battle_env.base_status_effects_chance_percent
                     / 100
                 )
                 if result:

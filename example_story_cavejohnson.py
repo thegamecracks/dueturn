@@ -7,7 +7,6 @@ from src.sequencer import begin_sequence
 from src.textio import (
     input_choice_typewriter, input_loop_if_equals_typewriter,
     input_number_typewriter, print_sleep_multiline, print_typewriter,
-    textio_typewriter,
     SLEEP_CHAR_DELAY_NORMAL, SLEEP_CHAR_DELAY_SPECIFICS
 )
 
@@ -509,7 +508,7 @@ def main(loop=True):
         sleep_char=SLEEP_CHAR_DELAY_NORMAL
     )
 
-    textio_typewriter.TYPEWRITER_SPEED = GAME_SPEED
+    TYPEWRITER_SPEED = GAME_SPEED
 
     if loop:
         while True:

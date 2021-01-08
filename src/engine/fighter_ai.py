@@ -734,8 +734,8 @@ development."""
         moveFireBall = user.find_move({'name': 'Fire Ball'}, raiseIfFail=True)
         costFireBall = int(
             moveFireBall['mpCost'].upper
-            * user.battle_env.base_energies_cost_multiplier_percent
-            * user.battle_env.base_energy_cost_mana_multiplier_percent
+            * user.battle_env.base_stat_costs_multiplier_percent
+            * user.battle_env.base_stat_cost_mana_multiplier_percent
             / 10000)
         if user.hp <= 10 and user.mp >= -costFireBall and target.hp >= 20:
             return moveFireBall
@@ -744,8 +744,8 @@ development."""
             moveJab = user.find_move({'name': 'Jab'}, raiseIfFail=True)
             costJab = int(
                 moveJab['stCost'].average()
-                * user.battle_env.base_energies_cost_multiplier_percent
-                * user.battle_env.base_energy_cost_stamina_multiplier_percent
+                * user.battle_env.base_stat_costs_multiplier_percent
+                * user.battle_env.base_stat_cost_stamina_multiplier_percent
                 / 10000)
         if target.hp <= 10 and user.st >= -costJab:
             return moveJab
@@ -754,8 +754,8 @@ development."""
             moveSword = user.find_move({'name': 'Sword'}, raiseIfFail=True)
             costSword = int(
                 moveSword['stCost'].upper
-                * user.battle_env.base_energies_cost_multiplier_percent
-                * user.battle_env.base_energy_cost_stamina_multiplier_percent
+                * user.battle_env.base_stat_costs_multiplier_percent
+                * user.battle_env.base_stat_cost_stamina_multiplier_percent
                 / 10000)
         if user.st >= -costSword:
             return moveSword
@@ -764,8 +764,8 @@ development."""
             moveKick = user.find_move({'name': 'Kick'}, raiseIfFail=True)
             costKick = int(
                 moveKick['stCost'].average()
-                * user.battle_env.base_energies_cost_multiplier_percent
-                * user.battle_env.base_energy_cost_stamina_multiplier_percent
+                * user.battle_env.base_stat_costs_multiplier_percent
+                * user.battle_env.base_stat_cost_stamina_multiplier_percent
                 / 10000)
         if user.st >= -costKick:
             return moveKick

@@ -531,7 +531,7 @@ def generate_spelunky_map(y_size, x_size, only_pathed_cells=False):
     cardinal = None
     backtrack_cardinal = None  # Make sure it does not backtrack
 
-    while True:
+    while not (y == y_size and cardinal == 'S'):
         if cardinal == 'S':
             # Previous direction was south; no backtracking to deal with
             # because north is not an option
@@ -539,20 +539,24 @@ def generate_spelunky_map(y_size, x_size, only_pathed_cells=False):
             backtrack_cardinal = reverse_cardinal(cardinal)
         else:
             # Pick a random direction that doesn't go back on itself
-            while True:
-                cardinal = random.choice(directions)
+            cardinals = list(directions)
+            random.shuffle(cardinals)
+            for cardinal in cardinals:
                 if cardinal != backtrack_cardinal:
                     break
+            else:
+                raise ValueError(
+                    'failed to pick a direction that does not backtrack '
+                    f'(directions: {directions}, backtrack: '
+                    f'{backtrack_cardinal})'
+                )
             backtrack_cardinal = reverse_cardinal(cardinal)
 
         if x == 0 and cardinal == 'W' or x == x_size and cardinal == 'E':
             # Next path hit a wall; go down
             cardinal = 'S'
 
-        if y == y_size and cardinal == 'S':
-            # Downwards path hit the floor; finish
-            break
-        else:
+        if not (y == y_size and cardinal == 'S'):
             # Create new cell and connect to it
             y_new, x_new = vectors[cardinal]
             y_new += y
@@ -564,6 +568,7 @@ def generate_spelunky_map(y_size, x_size, only_pathed_cells=False):
             # Set coordinates to the new cell
             y = y_new
             x = x_new
+        # Else downwards path hit the floor; finish
 
     if not only_pathed_cells:
         # Create empty cells
@@ -610,7 +615,6 @@ def main():
             y, x = 4, 4
 
         while True:
-            input()
             if change_size:
                 y, x = [int(n) for n in input(
                             'y-size and x-size ("14 58"): ').split()]
@@ -629,6 +633,7 @@ def main():
                     29, 118, markers={start: 'S', end: 'E'}))
             except RuntimeError:
                 print('Failed render: too big to fit in border')
+            input()
 
     def moving_objects(y_size, x_size):
         from math import inf as infinity

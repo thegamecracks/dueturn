@@ -1,20 +1,24 @@
 from .missile_evasion import missile_evasion
 from src import engine
+from src.engine.battle_env import Autoplay
 
 
 def begin_jet_battle(a, a_evading, b, b_evading):
-    results = {}
     with engine.BattleEnvironment(fighters=(a, b)) as battle:
-        while True:
-            results = battle.begin_battle(
-                a, b, stop_after_move=True,
-                autoplay=True, **results
+        def step_battle(results=None):
+            results = {} if results is None else results
+            return battle.begin_battle(
+                a, b, stop_after_move=True, autoplay=Autoplay.SLEEP,
+                **results
             )
 
-            if not isinstance(results, dict):
-                # Battle probably ended in victory/loss (should be a list)
-                break
+        results = step_battle()
+        while isinstance(results, dict):
             move_result = results.pop('move_result')
+            if move_result is None:
+                # Move failed due to unsatisfied requirements
+                results = step_battle(results)
+                continue
 
             sender = move_result['sender']
             move, costs = move_result['move'], move_result['costs']
@@ -35,3 +39,5 @@ def begin_jet_battle(a, a_evading, b, b_evading):
                     side = 'right'
                 value = missile_evasion(evader, move, side)
                 target.hp += value
+
+            results = step_battle(results)

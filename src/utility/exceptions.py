@@ -9,7 +9,7 @@ logger = logs.get_logger()
 
 def exception_message(
         exc_type=None, exc_value=None, exc_traceback=None,
-        header: str = '', log_handler=None) -> str:
+        header: str = '', log_handler=logger) -> str:
     """Create a message out of the last exception handled by try/except.
 
     Args:
@@ -34,7 +34,7 @@ def exception_message(
 
     if log_handler is not None:
         # Log the exception; doesn't require creating a message
-        logger.exception(msg)
+        log_handler.exception(msg)
 
     # Create the message to return, containing the traceback and exception
     for frame in traceback.extract_tb(exc_traceback):

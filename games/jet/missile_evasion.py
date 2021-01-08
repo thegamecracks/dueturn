@@ -5,6 +5,7 @@ from . import moves
 from . import stats
 from src import engine
 from src import settings
+from src.engine.battle_env import Autoplay
 from src.textio import (print_color, print_typewriter, SLEEP_CHAR_DELAY_NORMAL)
 
 cfg_engine = settings.load_config('engine')
@@ -36,6 +37,13 @@ def missile_evasion(evader, missile, side='left'):
     )
     with engine.BattleEnvironment(
             fighters=(evader, missile_fighter)) as battle:
+        def step_battle(results=None):
+            results = {} if results is None else results
+            return battle.begin_battle(
+                a, b, stop_after_move=True, autoplay=Autoplay.SLEEP,
+                **results
+            )
+
         results = {'starting_turn': 2 + int(side == 'left')}
 
         if side == 'left':
@@ -45,15 +53,12 @@ def missile_evasion(evader, missile, side='left'):
         else:
             raise ValueError(f'Unknown side {side!r}')
 
-        while True:
-            results = battle.begin_battle(
-                a, b, stop_after_move=True, autoplay=True,
-                **results
-            )
-
-            if not isinstance(results, dict):
-                break
+        results = step_battle(results)
+        while isinstance(results, dict):
             move_result = results.pop('move_result')
+            if move_result is None:
+                results = step_battle(results)
+                continue
 
             sender, move = move_result['sender'], move_result['move']
 
@@ -85,7 +90,7 @@ def missile_evasion(evader, missile, side='left'):
                 sleep = (cfg_engine.GAME_AUTOPLAY_AI_DELAY
                          / cfg_engine.GAME_DISPLAY_SPEED)
 
-                print_color(f'\nThe missile makes its last adjustments!',
+                print_color('\nThe missile makes its last adjustments!',
                             end='\n\n\n')
 
                 time.sleep(sleep)
@@ -118,3 +123,5 @@ def missile_evasion(evader, missile, side='left'):
             else:
                 target = b if sender == a else a
                 target.print_move(sender, move, None, None, 'fastMessage')
+
+            results = step_battle(results)

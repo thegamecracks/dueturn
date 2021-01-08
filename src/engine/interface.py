@@ -98,9 +98,9 @@ Usage: ?[cmd/topic]"""
         """
 
     # ----- Commands -----
-    def do_debug(self, arg):
-        """Activate the python debugger within the shell."""
-        breakpoint()
+    # def do_debug(self, arg):
+    #     """Activate the python debugger within the shell."""
+    #     breakpoint()
 
     # ----- Internal methods -----
     def exit(self):

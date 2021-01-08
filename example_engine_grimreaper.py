@@ -43,21 +43,21 @@ def main():
             'movetypes': ([dueturn.MoveType('Physical')],),
             'description': 'A downwards strike with the Scythe.',
             'moveMessage': """\
-    {sender}{FLred} strikes down {target}{FLred} with the Scythe \
-    for {move:hp neg} damage!""",
+{sender}{FLred} strikes down {target}{FLred} with the Scythe \
+for {-hpValue} damage!""",
             'hpValue': dueturn.Bound(-100, -200),
             'stCost': dueturn.Bound(-1000, -4000),
             'speed': 0,
             'blockChance': 0,
             'blockFailHPValue': dueturn.Bound(-120, -220),
             'blockFailMessage': """\
-    {target}{FLred} fails to block {sender}{FLred}'s Grim Strike, \
-    dealing {move:hpBlockF neg} damage!""",
+{target}{FLred} fails to block {sender}{FLred}'s Grim Strike, \
+dealing {-hpValue} damage!""",
             'evadeChance': 0,
             'evadeFailHPValue': dueturn.Bound(-140, -240),
             'evadeFailMessage': """\
-    {target}{FLred} fails to evade {sender}{FLred}'s Grim Strike, \
-    dealing {move:hpEvadeF neg} damage!""",
+{target}{FLred} fails to evade {sender}{FLred}'s Grim Strike, \
+dealing {-hpValue} damage!""",
             'criticalChance': 0,
             'failureChance': 0,
             }

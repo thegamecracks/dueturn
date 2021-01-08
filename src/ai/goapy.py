@@ -35,7 +35,7 @@ class World:
 
     def calculate(self):
         self.plans = []
-        
+
         for planner in self.planners:
             self.plans.append(planner.calculate())
 
@@ -54,7 +54,7 @@ class World:
 
         if debug:
             _i = 1
-            
+
             for plan_score in _sorted_plans:
                 for plan in _plans[plan_score]:
                     print(_i)
@@ -65,7 +65,7 @@ class World:
                     _i += 1
 
                     print('\nTotal cost: %s\n' % plan_score)
-        
+
         return [_plans[p][0] for p in _sorted_plans]
 
 class Planner:
@@ -145,27 +145,27 @@ class Action_List:
 def distance_to_state(state_1, state_2):
     _scored_keys = set()
     _score = 0
-    
+
     for key in state_2.keys():
         _value = state_2[key]
-        
+
         if _value == -1:
             continue
 
         if not _value == state_1[key]:
             _score += 1
-        
+
         _scored_keys.add(key)
-    
+
     for key in state_1.keys():
         if key in _scored_keys:
             continue
-        
+
         _value = state_1[key]
-        
+
         if _value == -1:
             continue
-        
+
         if not _value == state_2[key]:
             _score += 1
 
@@ -213,7 +213,7 @@ def astar(start_state, goal_state, actions, reactions, weight_table):
     _start_node['h'] = distance_to_state(start_state, goal_state)
     _start_node['f'] = _start_node['g'] + _start_node['h']
     _path['olist'][_start_node['id']] = _start_node
-    
+
     for action in actions:
         _path['action_nodes'][action] = create_node(_path, actions[action], name=action)
 
@@ -229,9 +229,9 @@ def walk_path(path):
         ####################
         ##Find lowest node##
         ####################
-        
+
         _lowest = {'node': None, 'f': 9000000}
-        
+
         for next_node in _olist.values():
             if not _lowest['node'] or next_node['f'] < _lowest['f']:
                 _lowest['node'] = next_node['id']
@@ -242,17 +242,17 @@ def walk_path(path):
 
         else:
             return
-        
+
         ################################
         ##Remove node with lowest rank##
         ################################
-        
+
         del _olist[node['id']]
-        
+
         #######################################
         ##If it matches the goal, we are done##
         #######################################
-        
+
         if conditions_are_met(node['state'], path['goal']):
             _path = []
 
@@ -260,23 +260,23 @@ def walk_path(path):
                 _path.append(node)
 
                 node = path['nodes'][node['p_id']]
-            
+
             _path.reverse()
-            
+
             return _path
-        
+
         ####################
         ##Add it to closed##
         ####################
-        
+
         _clist[node['id']] = node
-        
+
         ##################
         ##Find neighbors##
         ##################
-        
+
         _neighbors = []
-        
+
         for action_name in path['action_nodes']:
             if not conditions_are_met(node['state'], path['action_nodes'][action_name]['state']):
                 continue
@@ -295,26 +295,26 @@ def walk_path(path):
                     continue
 
                 _c_node['state'][key] = _value
-            
+
             path['nodes'][_c_node['id']] = _c_node
             _neighbors.append(_c_node)
 
         for next_node in _neighbors:
             _g_cost = node['g'] + path['weight_table'][next_node['name']]
             _in_olist, _in_clist = node_in_list(next_node, _olist), node_in_list(next_node, _clist)
-            
+
             if _in_olist and _g_cost < next_node['g']:
                 del _olist[next_node]
-            
+
             if _in_clist and _g_cost < next_node['g']:
                 del _clist[next_node['id']]
-            
+
             if not _in_olist and not _in_clist:
                 next_node['g'] = _g_cost
                 next_node['h'] = distance_to_state(next_node['state'], path['goal'])
                 next_node['f'] = next_node['g'] + next_node['h']
                 next_node['p_id'] = node['id']
-                
+
                 _olist[next_node['id']] = next_node
 
     return []
